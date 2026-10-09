@@ -72,13 +72,13 @@ export async function fetchGitHubFollowingStats(
     });
 
     if (!response.ok) {
-      throw new Error(\`GitHub API returned \${response.status}\`);
+      throw new Error(`GitHub API returned ${response.status}`);
     }
 
     const { data, errors } = await response.json();
     
     if (errors) {
-      throw new Error(\`GraphQL Error: \${errors.map((e: any) => e.message).join(', ')}\`);
+      throw new Error(`GraphQL Error: ${errors.map((e: any) => e.message).join(', ')}`);
     }
 
     const followingData = data.user.following;
