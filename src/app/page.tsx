@@ -54,7 +54,7 @@ async function LeaderboardData() {
                 <td className="px-6 py-4 font-medium flex items-center gap-3">
                   <img src={user.avatarUrl} alt={user.login} className="w-8 h-8 rounded-full border border-neutral-700" />
                   <div>
-                    <a href={\`https://github.com/\${user.login}\`} target="_blank" rel="noreferrer" className="text-blue-400 hover:underline">
+                    <a href={`https://github.com/${user.login}`} target="_blank" rel="noreferrer" className="text-blue-400 hover:underline">
                       {user.name || user.login}
                     </a>
                     {user.name && <div className="text-xs text-neutral-500">{user.login}</div>}
