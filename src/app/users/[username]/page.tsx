@@ -1,6 +1,5 @@
-import React from "react";
+import React, { Suspense } from "react";
 import Link from "next/link";
-import { notFound } from "next/navigation";
 import { fetchGitHubFollowingStats } from "@/lib/github";
 import { sortAndRankUsers } from "@/lib/ranking";
 import { GithubIcon } from "@/components/Icons";
@@ -12,16 +11,17 @@ import {
   GitFork,
   Users,
   BookOpen,
-  Calendar,
   Flame,
   Award,
 } from "lucide-react";
+
+export const instant = false;
 
 interface UserProfilePageProps {
   params: Promise<{ username: string }>;
 }
 
-export default async function UserProfilePage({ params }: UserProfilePageProps) {
+async function UserProfileContent({ params }: UserProfilePageProps) {
   const { username } = await params;
   const token = process.env.GITHUB_TOKEN;
 
@@ -266,5 +266,19 @@ export default async function UserProfilePage({ params }: UserProfilePageProps) 
         </div>
       </div>
     </div>
+  );
+}
+
+export default function UserProfilePage(props: UserProfilePageProps) {
+  return (
+    <Suspense
+      fallback={
+        <div className="min-h-screen bg-[#0a0a0a] text-neutral-200 p-8 flex items-center justify-center">
+          <div className="animate-spin w-8 h-8 border-2 border-blue-500 border-t-transparent rounded-full" />
+        </div>
+      }
+    >
+      <UserProfileContent {...props} />
+    </Suspense>
   );
 }
