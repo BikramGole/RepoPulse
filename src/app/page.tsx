@@ -1,156 +1,170 @@
-import { Suspense } from 'react';
-import { fetchGitHubFollowingStats } from '@/lib/github';
-import { sortAndRankUsers } from '@/lib/ranking';
-import { Trophy, Github, Star, GitFork, Users, Activity } from 'lucide-react';
+import React, { Suspense } from "react";
+import { fetchGitHubFollowingStats } from "@/lib/github";
+import { LeaderboardTable } from "@/components/LeaderboardTable";
+import { GithubIcon } from "@/components/Icons";
+import {
+  Users,
+  Flame,
+  Star,
+  GitCommit,
+  Sparkles,
+} from "lucide-react";
 
-export const revalidate = 3600;
-
-async function LeaderboardData() {
+async function LeaderboardContainer() {
   const token = process.env.GITHUB_TOKEN;
-  
+
   if (!token) {
     return (
-      <div className="p-8 rounded-lg border border-red-900/50 bg-red-950/20 text-red-200 text-center">
-        <h2 className="text-xl font-bold mb-2">Missing Configuration</h2>
-        <p>Please provide a GITHUB_TOKEN in your environment variables to fetch real data.</p>
+      <div className="p-8 rounded-2xl border border-amber-900/40 bg-amber-950/20 text-amber-200 text-center space-y-3">
+        <h2 className="text-xl font-bold">GitHub Token Required</h2>
+        <p className="text-sm text-neutral-400 max-w-md mx-auto">
+          Please define <code className="text-amber-400 bg-amber-950/80 px-2 py-0.5 rounded">GITHUB_TOKEN</code> in your environment variables to query GitHub GraphQL API.
+        </p>
       </div>
     );
   }
 
   try {
-    // We fetch stats for accounts followed by the user. 
-    // You can also change 'BikramGole' to any specific username if needed.
-    const users = await fetchGitHubFollowingStats('NeoXBikram', token);
-    const rankedUsers = sortAndRankUsers(users, 'score', 'desc');
+    const users = await fetchGitHubFollowingStats("NeoXBikram", token);
+
+    // Compute network summary aggregates
+    const totalNetworkContribs = users.reduce((acc, u) => acc + (u.totalContributions || 0), 0);
+    const totalNetworkStars = users.reduce((acc, u) => acc + (u.starsReceived || 0), 0);
+    const totalActive7d = users.filter((u) => (u.timeline?.last7Days || 0) > 0).length;
 
     return (
-      <div className="w-full overflow-x-auto rounded-lg border border-neutral-800 bg-neutral-900/50">
-        <table className="w-full text-sm text-left">
-          <thead className="text-xs text-neutral-400 uppercase bg-neutral-900/80 border-b border-neutral-800">
-            <tr>
-              <th className="px-6 py-4 font-semibold">Rank</th>
-              <th className="px-6 py-4 font-semibold">Developer</th>
-              <th className="px-6 py-4 font-semibold text-right">Score</th>
-              <th className="px-6 py-4 font-semibold text-right">Commits/Yr</th>
-              <th className="px-6 py-4 font-semibold text-right">Followers</th>
-              <th className="px-6 py-4 font-semibold text-right">Stars</th>
-              <th className="px-6 py-4 font-semibold text-right">Repos</th>
-            </tr>
-          </thead>
-          <tbody>
-            {rankedUsers.map((user, idx) => (
-              <tr 
-                key={user.login} 
-                className="border-b border-neutral-800 hover:bg-neutral-800/50 transition-colors"
-              >
-                <td className="px-6 py-4 whitespace-nowrap font-medium text-neutral-300">
-                  <div className="flex items-center gap-2">
-                    {idx === 0 && <Trophy className="w-4 h-4 text-yellow-500" />}
-                    {idx === 1 && <Trophy className="w-4 h-4 text-gray-400" />}
-                    {idx === 2 && <Trophy className="w-4 h-4 text-amber-600" />}
-                    {idx > 2 && <span className="w-4 inline-block text-center">{user.rank}</span>}
-                  </div>
-                </td>
-                <td className="px-6 py-4 font-medium flex items-center gap-3">
-                  <img src={user.avatarUrl} alt={user.login} className="w-8 h-8 rounded-full border border-neutral-700" />
-                  <div>
-                    <a href={`https://github.com/${user.login}`} target="_blank" rel="noreferrer" className="text-blue-400 hover:underline">
-                      {user.name || user.login}
-                    </a>
-                    {user.name && <div className="text-xs text-neutral-500">{user.login}</div>}
-                  </div>
-                </td>
-                <td className="px-6 py-4 text-right font-mono text-emerald-400">{user.score.toFixed(1)}</td>
-                <td className="px-6 py-4 text-right font-mono">{user.totalContributions.toLocaleString()}</td>
-                <td className="px-6 py-4 text-right font-mono">{user.followers.toLocaleString()}</td>
-                <td className="px-6 py-4 text-right font-mono">{user.starsReceived.toLocaleString()}</td>
-                <td className="px-6 py-4 text-right font-mono">{user.publicRepos}</td>
-              </tr>
-            ))}
-            {rankedUsers.length === 0 && (
-              <tr>
-                <td colSpan={7} className="px-6 py-8 text-center text-neutral-500">
-                  No followed accounts found.
-                </td>
-              </tr>
-            )}
-          </tbody>
-        </table>
+      <div className="space-y-8">
+        {/* Network Highlight Cards */}
+        <div className="grid grid-cols-2 md:grid-cols-4 gap-4">
+          <div className="p-5 rounded-2xl border border-neutral-800 bg-neutral-900/40 backdrop-blur-md">
+            <span className="text-xs text-neutral-400 flex items-center gap-1.5 font-medium">
+              <Users className="w-4 h-4 text-blue-400" /> Tracked Classmates
+            </span>
+            <p className="text-2xl md:text-3xl font-black font-mono text-white mt-2">
+              {users.length}
+            </p>
+            <p className="text-[11px] text-neutral-500 mt-1">From @NeoXBikram network</p>
+          </div>
+
+          <div className="p-5 rounded-2xl border border-neutral-800 bg-neutral-900/40 backdrop-blur-md">
+            <span className="text-xs text-neutral-400 flex items-center gap-1.5 font-medium">
+              <GitCommit className="w-4 h-4 text-emerald-400" /> Total 365d Commits
+            </span>
+            <p className="text-2xl md:text-3xl font-black font-mono text-emerald-400 mt-2">
+              {totalNetworkContribs.toLocaleString()}
+            </p>
+            <p className="text-[11px] text-neutral-500 mt-1">Verified public events</p>
+          </div>
+
+          <div className="p-5 rounded-2xl border border-neutral-800 bg-neutral-900/40 backdrop-blur-md">
+            <span className="text-xs text-neutral-400 flex items-center gap-1.5 font-medium">
+              <Star className="w-4 h-4 text-yellow-400" /> Total Stars
+            </span>
+            <p className="text-2xl md:text-3xl font-black font-mono text-yellow-400 mt-2">
+              {totalNetworkStars.toLocaleString()}
+            </p>
+            <p className="text-[11px] text-neutral-500 mt-1">Across all public repos</p>
+          </div>
+
+          <div className="p-5 rounded-2xl border border-neutral-800 bg-neutral-900/40 backdrop-blur-md">
+            <span className="text-xs text-neutral-400 flex items-center gap-1.5 font-medium">
+              <Flame className="w-4 h-4 text-orange-400" /> Active This Week
+            </span>
+            <p className="text-2xl md:text-3xl font-black font-mono text-orange-400 mt-2">
+              {totalActive7d}
+            </p>
+            <p className="text-[11px] text-neutral-500 mt-1">Committed in past 7 days</p>
+          </div>
+        </div>
+
+        {/* Dynamic Interactive Leaderboard */}
+        <LeaderboardTable initialUsers={users} />
       </div>
     );
-  } catch (err: any) {
+  } catch (err: unknown) {
+    const errorMsg = err instanceof Error ? err.message : "An unexpected error occurred.";
     return (
-      <div className="p-8 rounded-lg border border-red-900/50 bg-red-950/20 text-red-200 text-center">
-        <h2 className="text-xl font-bold mb-2">Error Fetching Data</h2>
-        <p>{err.message || 'Unknown error occurred'}</p>
+      <div className="p-8 rounded-2xl border border-rose-900/40 bg-rose-950/20 text-rose-200 text-center space-y-3">
+        <h2 className="text-lg font-bold">API Synchronization Error</h2>
+        <p className="text-sm text-neutral-400 max-w-lg mx-auto">{errorMsg}</p>
       </div>
     );
   }
 }
 
-export default function Home() {
+export default function HomePage() {
   return (
-    <main className="min-h-screen bg-[#0a0a0a] text-neutral-200 p-8 md:p-24 selection:bg-blue-500/30">
-      <div className="max-w-6xl mx-auto space-y-12">
-        
-        {/* Header */}
-        <header className="space-y-4">
-          <div className="flex items-center gap-3 text-blue-500 mb-2">
-            <Github className="w-8 h-8" />
-            <span className="font-mono text-sm tracking-widest uppercase">CommitRank</span>
+    <main className="min-h-screen bg-[#0a0a0a] text-neutral-200 p-6 md:p-14 selection:bg-blue-500/30">
+      <div className="max-w-7xl mx-auto space-y-10">
+        {/* Top Header */}
+        <header className="flex flex-col md:flex-row md:items-center justify-between gap-6 pb-6 border-b border-neutral-800/80">
+          <div className="space-y-2">
+            <div className="flex items-center gap-2.5">
+              <div className="p-2 rounded-xl bg-gradient-to-br from-blue-600 to-indigo-600 text-white shadow-lg shadow-blue-500/20">
+                <GithubIcon className="w-5 h-5" />
+              </div>
+              <span className="font-mono text-xs font-bold tracking-widest uppercase bg-gradient-to-r from-blue-400 to-indigo-400 bg-clip-text text-transparent">
+                CommitRank
+              </span>
+              <span className="px-2 py-0.5 rounded-full text-[10px] font-semibold bg-neutral-800 text-neutral-400 border border-neutral-700">
+                v1.0 Live
+              </span>
+            </div>
+            <h1 className="text-3xl md:text-4xl font-extrabold tracking-tight text-white">
+              Classmate GitHub Leaderboard
+            </h1>
+            <p className="text-neutral-400 text-sm max-w-xl">
+              Live ranking of developers followed by{" "}
+              <a
+                href="https://github.com/NeoXBikram?tab=following"
+                target="_blank"
+                rel="noreferrer"
+                className="text-blue-400 hover:underline font-mono"
+              >
+                @NeoXBikram
+              </a>
+              . Scored on commits, velocity, stargazers, and community impact.
+            </p>
           </div>
-          <h1 className="text-4xl md:text-5xl font-bold tracking-tight text-white">
-            Classmate Leaderboard
-          </h1>
-          <p className="text-neutral-400 max-w-2xl text-lg leading-relaxed">
-            Ranking the most active developers from your GitHub following list. 
-            Scores are calculated based on public contributions, stars, followers, and repository activity.
-          </p>
+
+          <div className="flex items-center gap-3">
+            <a
+              href="https://github.com/BikramGole/RepoPulse"
+              target="_blank"
+              rel="noreferrer"
+              className="flex items-center gap-2 px-4 py-2 bg-neutral-900 hover:bg-neutral-800 border border-neutral-800 text-neutral-300 hover:text-white rounded-xl text-xs font-semibold transition-all shadow-sm"
+            >
+              <GithubIcon className="w-4 h-4" />
+              Repository
+            </a>
+          </div>
         </header>
 
-        {/* Dashboard Stats */}
-        <div className="grid grid-cols-1 md:grid-cols-3 gap-6">
-          <div className="p-6 rounded-xl border border-neutral-800 bg-neutral-900/30 flex flex-col gap-2 relative overflow-hidden">
-            <Activity className="w-5 h-5 text-emerald-500 mb-2" />
-            <h3 className="text-neutral-400 text-sm font-medium">Data Freshness</h3>
-            <p className="text-2xl font-semibold text-white">Real-time API</p>
-            <div className="absolute right-0 bottom-0 w-24 h-24 bg-emerald-500/10 blur-3xl rounded-full translate-x-8 translate-y-8" />
-          </div>
-          <div className="p-6 rounded-xl border border-neutral-800 bg-neutral-900/30 flex flex-col gap-2 relative overflow-hidden">
-            <Star className="w-5 h-5 text-yellow-500 mb-2" />
-            <h3 className="text-neutral-400 text-sm font-medium">Scoring Metric</h3>
-            <p className="text-2xl font-semibold text-white">Contributions + Stars</p>
-            <div className="absolute right-0 bottom-0 w-24 h-24 bg-yellow-500/10 blur-3xl rounded-full translate-x-8 translate-y-8" />
-          </div>
-          <div className="p-6 rounded-xl border border-neutral-800 bg-neutral-900/30 flex flex-col gap-2 relative overflow-hidden">
-            <Users className="w-5 h-5 text-blue-500 mb-2" />
-            <h3 className="text-neutral-400 text-sm font-medium">Data Source</h3>
-            <p className="text-2xl font-semibold text-white">GitHub Following</p>
-            <div className="absolute right-0 bottom-0 w-24 h-24 bg-blue-500/10 blur-3xl rounded-full translate-x-8 translate-y-8" />
-          </div>
-        </div>
-
-        {/* Leaderboard Section */}
-        <section className="space-y-6">
-          <div className="flex items-center justify-between">
-            <h2 className="text-2xl font-bold text-white flex items-center gap-2">
-              <Trophy className="w-5 h-5 text-yellow-500" />
-              Top Developers
-            </h2>
-          </div>
-          
-          <Suspense fallback={
-            <div className="w-full h-64 rounded-lg border border-neutral-800 bg-neutral-900/50 flex items-center justify-center">
-              <div className="animate-pulse flex flex-col items-center gap-4">
-                <div className="w-8 h-8 border-4 border-blue-500/30 border-t-blue-500 rounded-full animate-spin" />
-                <p className="text-neutral-500">Fetching GitHub API data...</p>
+        {/* Content Section */}
+        <section>
+          <Suspense
+            fallback={
+              <div className="w-full h-80 rounded-2xl border border-neutral-800 bg-neutral-900/30 flex flex-col items-center justify-center gap-3">
+                <div className="w-8 h-8 border-2 border-blue-500/30 border-t-blue-500 rounded-full animate-spin" />
+                <span className="text-xs text-neutral-400 font-mono">
+                  Loading classmates and syncing GitHub metrics...
+                </span>
               </div>
-            </div>
-          }>
-            <LeaderboardData />
+            }
+          >
+            <LeaderboardContainer />
           </Suspense>
         </section>
 
+        {/* Footer */}
+        <footer className="pt-8 border-t border-neutral-800/60 flex flex-col sm:flex-row items-center justify-between text-xs text-neutral-500 gap-4">
+          <p>© 2026 CommitRank. Built with Next.js, Turbopack, and GitHub GraphQL API.</p>
+          <div className="flex items-center gap-4">
+            <span>Dark Theme Analytics</span>
+            <span>•</span>
+            <span>Real Data</span>
+          </div>
+        </footer>
       </div>
     </main>
   );
