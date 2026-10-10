@@ -9,6 +9,8 @@ import { StreakStatsCard } from "@/components/StreakStatsCard";
 import { LanguageBreakdownCard } from "@/components/LanguageBreakdownCard";
 import { CommittersBadge } from "@/components/CommittersBadge";
 import { UserGlobeCard } from "@/components/UserGlobeCard";
+import { UserAudienceMap } from "@/components/UserAudienceMap";
+import { fetchUserAudience } from "@/lib/gitcharta/audience";
 import {
   ArrowLeft,
   ExternalLink,
@@ -68,6 +70,13 @@ async function UserProfileContent({ params }: UserProfilePageProps) {
   const countryCode = user.country?.code || "NP";
   const countryName = user.country?.name || "Nepal";
   const countryFlag = user.country?.flag || "🇳🇵";
+
+  let audience = null;
+  try {
+    audience = await fetchUserAudience(username, token);
+  } catch (err) {
+    console.error("Failed to fetch user audience network:", err);
+  }
 
   return (
     <div className="min-h-screen bg-[#080c14] text-neutral-200 p-6 md:p-14">
@@ -218,10 +227,19 @@ async function UserProfileContent({ params }: UserProfilePageProps) {
         {/* 3. Language & Technology Stack Breakdown */}
         <LanguageBreakdownCard repositories={user.topRepositories} />
 
-        {/* 4. GitCharta Geolocation & Regional Network Node */}
+        {/* 4. GitCharta Follower & Following Global Network Map */}
+        {audience && (
+          <UserAudienceMap
+            initialAudience={audience}
+            currentUserLogin={user.login}
+            currentUserLocation={user.location}
+          />
+        )}
+
+        {/* 5. Regional Cohort Node Info */}
         <UserGlobeCard user={user} />
 
-        {/* 5. Featured Public Repositories */}
+        {/* 6. Featured Public Repositories */}
         <div className="space-y-4">
           <div className="flex items-center justify-between">
             <h2 className="text-base font-bold text-white flex items-center gap-2">
