@@ -6,6 +6,7 @@ import { GithubIcon } from "@/components/Icons";
 import { ContributionHeatmap } from "@/components/ContributionHeatmap";
 import { StreakStatsCard } from "@/components/StreakStatsCard";
 import { LanguageBreakdownCard } from "@/components/LanguageBreakdownCard";
+import { CommittersBadge } from "@/components/CommittersBadge";
 import {
   ArrowLeft,
   ExternalLink,
@@ -128,18 +129,8 @@ async function UserProfileContent({ params }: UserProfilePageProps) {
 
             {/* Quick Actions & Official Badges */}
             <div className="flex flex-col sm:flex-row items-center gap-3">
-              {/* Committers.top Nepal Badge */}
-              <div className="flex items-center">
-                <img
-                  src={`https://user-badge.committers.top/${countryName.toLowerCase()}/${user.login}`}
-                  alt={`${user.login} ranking in ${countryName}`}
-                  className="h-7 rounded shadow-md object-contain"
-                  onError={(e) => {
-                    // Fallback if user is not indexed on committers.top yet
-                    e.currentTarget.style.display = "none";
-                  }}
-                />
-              </div>
+              {/* Committers.top Regional Ranking Badge */}
+              <CommittersBadge countryName={countryName} login={user.login} />
 
               <a
                 href={`https://github.com/${user.login}`}
