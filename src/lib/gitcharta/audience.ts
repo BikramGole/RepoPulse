@@ -189,7 +189,7 @@ async function fetchAudienceField(
     `;
 
     try {
-      const response = await fetch(GITHUB_GRAPHQL_API, {
+      const res: Response = await fetch(GITHUB_GRAPHQL_API, {
         method: "POST",
         headers: {
           "Content-Type": "application/json",
@@ -202,9 +202,9 @@ async function fetchAudienceField(
         }),
       });
 
-      if (!response.ok) break;
+      if (!res.ok) break;
 
-      const payload = await response.json();
+      const payload: any = await res.json();
       const conn = payload?.data?.user?.[field];
       if (!conn || !Array.isArray(conn.nodes)) break;
 
