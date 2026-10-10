@@ -462,6 +462,7 @@ export function GlobeMap({ users }: GlobeMapProps) {
                           src={student.avatarUrl}
                           alt={student.login}
                           fill
+                          unoptimized
                           sizes="32px"
                           className="object-cover"
                         />
