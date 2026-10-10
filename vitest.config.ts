@@ -4,6 +4,8 @@ import path from "path";
 export default defineConfig({
   test: {
     environment: "node",
+    include: ["src/**/*.test.ts", "src/**/*.test.tsx"],
+    exclude: ["**/node_modules/**", "**/Githcharta/**"],
   },
   resolve: {
     alias: {
