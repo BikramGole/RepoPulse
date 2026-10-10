@@ -140,12 +140,12 @@ export function LeaderboardTable({ initialUsers }: LeaderboardTableProps) {
             onClick={() => setViewMode("map")}
             className={`flex-1 sm:flex-none flex items-center justify-center gap-2 px-4 py-2 rounded-lg text-xs font-semibold transition-all ${
               viewMode === "map"
-                ? "bg-blue-600 text-white shadow-lg shadow-blue-600/25"
+                ? "bg-gradient-to-r from-blue-600 to-cyan-600 text-white shadow-lg shadow-cyan-500/20"
                 : "text-neutral-400 hover:text-white"
             }`}
           >
-            <Globe className="w-3.5 h-3.5 text-blue-300" />
-            GitCharta World Map
+            <Globe className="w-3.5 h-3.5 text-cyan-300" />
+            GitCharta 3D Globe
           </button>
         </div>
 
