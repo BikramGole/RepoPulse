@@ -23,6 +23,7 @@ import {
   Flame,
   Award,
   Calendar,
+  BarChart3,
 } from "lucide-react";
 
 export const instant = false;
@@ -82,14 +83,24 @@ async function UserProfileContent({ params }: UserProfilePageProps) {
     <div className="min-h-screen bg-[#080c14] text-neutral-200 p-6 md:p-14">
       <div className="max-w-6xl mx-auto space-y-8">
         {/* Navigation */}
-        <div className="flex items-center justify-between">
-          <Link
-            href="/"
-            className="inline-flex items-center gap-2 text-xs font-semibold text-neutral-400 hover:text-white transition-colors p-2 rounded-xl bg-white/[0.03] border border-white/[0.06] hover:bg-white/[0.06]"
-          >
-            <ArrowLeft className="w-4 h-4" />
-            Back to Classmate Leaderboard
-          </Link>
+        <div className="flex flex-wrap items-center justify-between gap-3">
+          <div className="flex items-center gap-3">
+            <Link
+              href="/"
+              className="inline-flex items-center gap-2 text-xs font-semibold text-neutral-400 hover:text-white transition-colors p-2 rounded-xl bg-white/[0.03] border border-white/[0.06] hover:bg-white/[0.06]"
+            >
+              <ArrowLeft className="w-4 h-4" />
+              Back to Leaderboard
+            </Link>
+
+            <Link
+              href={`/repos/${user.login}/KinaHub`}
+              className="inline-flex items-center gap-1.5 text-xs font-mono text-cyan-300 hover:text-white transition-colors px-3 py-2 rounded-xl bg-cyan-500/10 border border-cyan-500/20 hover:bg-cyan-500/20"
+            >
+              <BarChart3 className="w-3.5 h-3.5 text-cyan-400" />
+              Repo Tracker
+            </Link>
+          </div>
 
           <span className="text-xs font-mono text-neutral-400 flex items-center gap-1.5">
             <span className="w-2 h-2 rounded-full bg-emerald-400 animate-pulse" />
@@ -250,19 +261,37 @@ async function UserProfileContent({ params }: UserProfilePageProps) {
 
           <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
             {user.topRepositories?.map((repo) => (
-              <a
+              <div
                 key={repo.name}
-                href={repo.url}
-                target="_blank"
-                rel="noreferrer"
                 className="group p-5 rounded-3xl border border-white/[0.08] bg-[#0e131f]/90 hover:bg-[#131b2e] hover:border-white/[0.16] transition-all flex flex-col justify-between shadow-xl"
               >
                 <div>
                   <div className="flex items-center justify-between gap-2">
-                    <h3 className="font-semibold text-white group-hover:text-blue-400 transition-colors truncate">
+                    <Link
+                      href={`/repos/${user.login}/${repo.name}`}
+                      className="font-semibold text-white group-hover:text-cyan-400 transition-colors truncate hover:underline"
+                    >
                       {repo.name}
-                    </h3>
-                    <ExternalLink className="w-3.5 h-3.5 text-neutral-500 group-hover:text-blue-400 transition-colors flex-shrink-0" />
+                    </Link>
+                    <div className="flex items-center gap-1.5 flex-shrink-0">
+                      <Link
+                        href={`/repos/${user.login}/${repo.name}`}
+                        className="p-1.5 rounded-lg bg-cyan-500/10 hover:bg-cyan-500/20 text-cyan-300 transition-colors text-[10px] font-mono flex items-center gap-1"
+                        title="View Repository Insights & Stats"
+                      >
+                        <BarChart3 className="w-3 h-3 text-cyan-400" />
+                        <span>Track</span>
+                      </Link>
+                      <a
+                        href={repo.url}
+                        target="_blank"
+                        rel="noreferrer"
+                        className="p-1.5 rounded-lg bg-white/[0.04] hover:bg-white/[0.08] text-neutral-400 hover:text-white transition-colors"
+                        title="Open on GitHub"
+                      >
+                        <ExternalLink className="w-3.5 h-3.5" />
+                      </a>
+                    </div>
                   </div>
                   {repo.description && (
                     <p className="text-xs text-neutral-400 mt-2 line-clamp-2 leading-relaxed">
@@ -287,7 +316,7 @@ async function UserProfileContent({ params }: UserProfilePageProps) {
                     {repo.forkCount}
                   </span>
                 </div>
-              </a>
+              </div>
             ))}
 
             {(!user.topRepositories || user.topRepositories.length === 0) && (
