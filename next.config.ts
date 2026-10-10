@@ -5,16 +5,15 @@ const nextConfig: NextConfig = {
   cacheComponents: true,
   partialPrefetching: true,
   images: {
+    unoptimized: true,
     remotePatterns: [
       {
         protocol: "https",
-        hostname: "avatars.githubusercontent.com",
-        pathname: "/**",
+        hostname: "**.githubusercontent.com",
       },
       {
         protocol: "https",
         hostname: "github.com",
-        pathname: "/**",
       },
     ],
   },
