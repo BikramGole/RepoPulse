@@ -20,8 +20,11 @@ const DEFAULT_GRACE_MS = 24 * 60 * 60 * 1000; // 24 hours
 const memoryStore = new Map<string, CacheEntry<unknown>>();
 
 // Disk Cache Directory (Level 2)
-const CACHE_DIR = path.resolve(process.cwd(), ".cache");
+const CACHE_DIR = process.env.VERCEL
+  ? path.resolve("/tmp", ".cache")
+  : path.resolve(process.cwd(), ".cache");
 const CACHE_FILE = path.join(CACHE_DIR, "commitrank-cache.json");
+const SEED_CACHE_FILE = path.join(process.cwd(), ".cache", "commitrank-cache.json");
 
 function ensureCacheDir() {
   try {
@@ -38,6 +41,10 @@ function readDiskCache(): Record<string, CacheEntry<unknown>> {
   try {
     if (fs.existsSync(CACHE_FILE)) {
       const content = fs.readFileSync(CACHE_FILE, "utf8");
+      return JSON.parse(content);
+    }
+    if (fs.existsSync(SEED_CACHE_FILE)) {
+      const content = fs.readFileSync(SEED_CACHE_FILE, "utf8");
       return JSON.parse(content);
     }
   } catch (err) {
