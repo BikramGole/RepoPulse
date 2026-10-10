@@ -129,8 +129,12 @@ async function UserProfileContent({ params }: UserProfilePageProps) {
 
             {/* Quick Actions & Official Badges */}
             <div className="flex flex-col sm:flex-row items-center gap-3">
-              {/* Committers.top Regional Ranking Badge */}
-              <CommittersBadge countryName={countryName} login={user.login} />
+              {/* Committers.top Regional Ranking Badge (threshold: 34+ followers) */}
+              <CommittersBadge
+                countryName={countryName}
+                login={user.login}
+                followers={user.followers}
+              />
 
               <a
                 href={`https://github.com/${user.login}`}
