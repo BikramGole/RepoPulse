@@ -5,12 +5,19 @@ import React, { useState } from "react";
 interface CommittersBadgeProps {
   countryName: string;
   login: string;
+  followers: number;
 }
 
-export function CommittersBadge({ countryName, login }: CommittersBadgeProps) {
+// Minimum followers threshold required by Committers.top for public regional indexing
+const MIN_FOLLOWERS_THRESHOLD = 34;
+
+export function CommittersBadge({ countryName, login, followers }: CommittersBadgeProps) {
   const [hasError, setHasError] = useState(false);
 
-  if (hasError) return null;
+  // If developer has less than 34 followers, they are ineligible for public Committers.top ranking
+  if (followers < MIN_FOLLOWERS_THRESHOLD || hasError) {
+    return null;
+  }
 
   return (
     <div className="flex items-center">
