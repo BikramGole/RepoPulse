@@ -8,6 +8,7 @@ import { ContributionHeatmap } from "@/components/ContributionHeatmap";
 import { StreakStatsCard } from "@/components/StreakStatsCard";
 import { LanguageBreakdownCard } from "@/components/LanguageBreakdownCard";
 import { CommittersBadge } from "@/components/CommittersBadge";
+import { UserGlobeCard } from "@/components/UserGlobeCard";
 import {
   ArrowLeft,
   ExternalLink,
@@ -217,7 +218,10 @@ async function UserProfileContent({ params }: UserProfilePageProps) {
         {/* 3. Language & Technology Stack Breakdown */}
         <LanguageBreakdownCard repositories={user.topRepositories} />
 
-        {/* 4. Featured Public Repositories */}
+        {/* 4. GitCharta Geolocation & Regional Network Node */}
+        <UserGlobeCard user={user} />
+
+        {/* 5. Featured Public Repositories */}
         <div className="space-y-4">
           <div className="flex items-center justify-between">
             <h2 className="text-base font-bold text-white flex items-center gap-2">
