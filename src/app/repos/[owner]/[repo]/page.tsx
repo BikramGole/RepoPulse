@@ -1,8 +1,12 @@
 import { Metadata } from "next";
+import { connection } from "next/server";
 import { RepoTrackerView } from "@/components/repo-tracker/RepoTrackerView";
 import { fetchRepoInsights } from "@/lib/repoTracker";
 import Link from "next/link";
-import { ArrowLeft, Compass, BarChart3, Globe } from "lucide-react";
+import { ArrowLeft, BarChart3, Globe } from "lucide-react";
+
+// Opt out of static prerendering — this page fetches live GitHub data
+export const instant = false;
 
 interface PageProps {
   params: Promise<{
@@ -20,6 +24,7 @@ export async function generateMetadata({ params }: PageProps): Promise<Metadata>
 }
 
 export default async function RepoDetailPage({ params }: PageProps) {
+  await connection();
   const { owner, repo } = await params;
 
   let initialData = null;
