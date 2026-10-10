@@ -721,6 +721,7 @@ export function UserAudienceMap({
                         src={profile.avatarUrl}
                         alt={profile.login}
                         fill
+                        unoptimized
                         sizes="40px"
                         className="object-cover"
                       />
