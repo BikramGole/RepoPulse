@@ -1,3 +1,5 @@
+import fs from "fs";
+import path from "path";
 import { GitHubUserStats, RepositorySummary } from "@/types";
 import { resolveUserLocation } from "@/lib/geo";
 import { computeStreakFromDays } from "@/lib/streak";
@@ -128,9 +130,17 @@ export async function fetchGitHubFollowingStats(
   token?: string,
   forceRefresh: boolean = false
 ): Promise<GitHubUserStats[]> {
-  const authToken = token || process.env.GITHUB_TOKEN;
+  let authToken = token || process.env.GITHUB_TOKEN;
   if (!authToken) {
-    throw new Error("No GITHUB_TOKEN configured. Please set GITHUB_TOKEN in .env.local.");
+    try {
+      const envPath = path.resolve(process.cwd(), ".env.local");
+      if (fs.existsSync(envPath)) {
+        const match = fs.readFileSync(envPath, "utf8").match(/GITHUB_TOKEN=([^\r\n]+)/);
+        if (match) authToken = match[1].trim();
+      }
+    } catch {
+      // ignore
+    }
   }
 
   const cacheKey = `github-classmates-${username.toLowerCase()}`;
@@ -138,6 +148,9 @@ export async function fetchGitHubFollowingStats(
   const { data } = await getOrSetCache(
     cacheKey,
     async () => {
+      if (!authToken) {
+        throw new Error("No GITHUB_TOKEN configured. Please set GITHUB_TOKEN in .env.local.");
+      }
       const query = `
         query GetClassmatesLeaderboard($login: String!) {
           viewer: user(login: $login) {
