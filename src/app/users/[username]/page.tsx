@@ -3,6 +3,9 @@ import Link from "next/link";
 import { fetchGitHubFollowingStats } from "@/lib/github";
 import { sortAndRankUsers } from "@/lib/ranking";
 import { GithubIcon } from "@/components/Icons";
+import { ContributionHeatmap } from "@/components/ContributionHeatmap";
+import { StreakStatsCard } from "@/components/StreakStatsCard";
+import { LanguageBreakdownCard } from "@/components/LanguageBreakdownCard";
 import {
   ArrowLeft,
   ExternalLink,
@@ -11,8 +14,10 @@ import {
   GitFork,
   Users,
   BookOpen,
+  MapPin,
   Flame,
   Award,
+  Calendar,
 } from "lucide-react";
 
 export const instant = false;
@@ -39,15 +44,15 @@ async function UserProfileContent({ params }: UserProfilePageProps) {
 
   if (!user) {
     return (
-      <div className="min-h-screen bg-[#0a0a0a] text-neutral-200 p-8 flex flex-col items-center justify-center">
-        <div className="max-w-md w-full p-8 rounded-2xl border border-neutral-800 bg-neutral-900/60 text-center space-y-4">
+      <div className="min-h-screen bg-[#080c14] text-neutral-200 p-8 flex flex-col items-center justify-center">
+        <div className="max-w-md w-full p-8 rounded-3xl border border-white/[0.08] bg-[#0e131f]/90 text-center space-y-4 backdrop-blur-xl shadow-2xl">
           <h2 className="text-xl font-bold text-white">Developer Not Found</h2>
-          <p className="text-sm text-neutral-400">
+          <p className="text-xs text-neutral-400">
             Could not find <span className="font-mono text-blue-400">@{username}</span> in the classmate network.
           </p>
           <Link
             href="/"
-            className="inline-flex items-center gap-2 px-4 py-2 bg-blue-600 hover:bg-blue-500 text-white rounded-xl text-xs font-semibold transition-all"
+            className="inline-flex items-center gap-2 px-4 py-2 bg-blue-600 hover:bg-blue-500 text-white rounded-xl text-xs font-semibold transition-all shadow-lg shadow-blue-600/20"
           >
             <ArrowLeft className="w-4 h-4" /> Back to Leaderboard
           </Link>
@@ -56,74 +61,116 @@ async function UserProfileContent({ params }: UserProfilePageProps) {
     );
   }
 
-  return (
-    <div className="min-h-screen bg-[#0a0a0a] text-neutral-200 p-6 md:p-16">
-      <div className="max-w-5xl mx-auto space-y-8">
-        {/* Navigation */}
-        <Link
-          href="/"
-          className="inline-flex items-center gap-2 text-xs font-medium text-neutral-400 hover:text-white transition-colors"
-        >
-          <ArrowLeft className="w-4 h-4" />
-          Back to Classmate Leaderboard
-        </Link>
+  const countryCode = user.country?.code || "NP";
+  const countryName = user.country?.name || "Nepal";
+  const countryFlag = user.country?.flag || "🇳🇵";
 
-        {/* Developer Header Banner */}
-        <div className="relative p-8 rounded-3xl border border-neutral-800 bg-gradient-to-b from-neutral-900/80 to-neutral-950/80 backdrop-blur-xl shadow-2xl overflow-hidden">
-          <div className="absolute top-0 right-0 w-80 h-80 bg-blue-500/10 rounded-full blur-3xl pointer-events-none" />
+  return (
+    <div className="min-h-screen bg-[#080c14] text-neutral-200 p-6 md:p-14">
+      <div className="max-w-6xl mx-auto space-y-8">
+        {/* Navigation */}
+        <div className="flex items-center justify-between">
+          <Link
+            href="/"
+            className="inline-flex items-center gap-2 text-xs font-semibold text-neutral-400 hover:text-white transition-colors p-2 rounded-xl bg-white/[0.03] border border-white/[0.06] hover:bg-white/[0.06]"
+          >
+            <ArrowLeft className="w-4 h-4" />
+            Back to Classmate Leaderboard
+          </Link>
+
+          <span className="text-xs font-mono text-neutral-400 flex items-center gap-1.5">
+            <span className="w-2 h-2 rounded-full bg-emerald-400 animate-pulse" />
+            Live GitHub Verified Profile
+          </span>
+        </div>
+
+        {/* Developer Header Hero Banner */}
+        <div className="relative p-8 rounded-3xl border border-white/[0.08] bg-gradient-to-b from-[#101726]/90 to-[#0c101c]/90 backdrop-blur-2xl shadow-2xl overflow-hidden">
+          {/* Ambient Glows */}
+          <div className="absolute top-0 right-0 w-96 h-96 bg-blue-500/10 rounded-full blur-3xl pointer-events-none" />
+          <div className="absolute bottom-0 left-0 w-96 h-96 bg-emerald-500/10 rounded-full blur-3xl pointer-events-none" />
 
           <div className="flex flex-col md:flex-row items-start md:items-center justify-between gap-6 relative z-10">
-            <div className="flex items-center gap-5">
-              <img
-                src={user.avatarUrl}
-                alt={user.login}
-                className="w-20 h-20 md:w-24 md:h-24 rounded-2xl border-2 border-neutral-700 object-cover shadow-xl"
-              />
-              <div className="space-y-1">
-                <div className="flex items-center gap-3">
+            <div className="flex items-center gap-6">
+              <div className="relative">
+                <img
+                  src={user.avatarUrl}
+                  alt={user.login}
+                  className="w-24 h-24 md:w-28 md:h-28 rounded-3xl border-2 border-white/20 object-cover shadow-2xl"
+                />
+                <span className="absolute -bottom-2 -right-2 text-2xl drop-shadow-md">
+                  {countryFlag}
+                </span>
+              </div>
+
+              <div className="space-y-1.5">
+                <div className="flex flex-wrap items-center gap-2.5">
                   <h1 className="text-2xl md:text-3xl font-black text-white tracking-tight">
                     {user.name || user.login}
                   </h1>
-                  <span className="px-2.5 py-0.5 rounded-full text-xs font-bold font-mono bg-blue-500/10 border border-blue-500/30 text-blue-400">
-                    Rank #{user.rank}
+                  <span className="px-3 py-0.5 rounded-full text-xs font-bold font-mono bg-blue-500/15 border border-blue-500/30 text-blue-400">
+                    Leaderboard Rank #{user.rank}
+                  </span>
+                  <span className="px-2.5 py-0.5 rounded-full text-[11px] font-semibold bg-white/[0.06] border border-white/[0.08] text-neutral-300 flex items-center gap-1">
+                    <MapPin className="w-3 h-3 text-rose-400" />
+                    {user.location || countryName}
                   </span>
                 </div>
-                <p className="text-sm font-mono text-neutral-400">@{user.login}</p>
-                {user.bio && <p className="text-xs text-neutral-300 max-w-xl pt-1">{user.bio}</p>}
+
+                <p className="text-xs font-mono text-neutral-400">@{user.login}</p>
+                {user.bio && (
+                  <p className="text-xs text-neutral-300 max-w-xl leading-relaxed pt-1">
+                    {user.bio}
+                  </p>
+                )}
               </div>
             </div>
 
-            <div className="flex items-center gap-3">
+            {/* Quick Actions & Official Badges */}
+            <div className="flex flex-col sm:flex-row items-center gap-3">
+              {/* Committers.top Nepal Badge */}
+              <div className="flex items-center">
+                <img
+                  src={`https://user-badge.committers.top/${countryName.toLowerCase()}/${user.login}`}
+                  alt={`${user.login} ranking in ${countryName}`}
+                  className="h-7 rounded shadow-md object-contain"
+                  onError={(e) => {
+                    // Fallback if user is not indexed on committers.top yet
+                    e.currentTarget.style.display = "none";
+                  }}
+                />
+              </div>
+
               <a
                 href={`https://github.com/${user.login}`}
                 target="_blank"
                 rel="noreferrer"
-                className="flex items-center gap-2 px-4 py-2.5 rounded-xl bg-neutral-800 hover:bg-neutral-700 border border-neutral-700 text-xs font-semibold text-white shadow-md transition-all"
+                className="flex items-center gap-2 px-4 py-2.5 rounded-2xl bg-white/[0.06] hover:bg-white/[0.12] border border-white/[0.1] text-xs font-semibold text-white shadow-lg transition-all"
               >
                 <GithubIcon className="w-4 h-4" />
-                View GitHub
+                GitHub Profile
                 <ExternalLink className="w-3.5 h-3.5 text-neutral-400" />
               </a>
             </div>
           </div>
 
-          {/* Quick Metrics Strip */}
-          <div className="grid grid-cols-2 sm:grid-cols-4 md:grid-cols-6 gap-3 mt-8 pt-6 border-t border-neutral-800/80">
-            <div className="p-3 rounded-xl bg-neutral-950/40 border border-neutral-800/60">
+          {/* Quick Metrics Bar */}
+          <div className="grid grid-cols-2 sm:grid-cols-3 md:grid-cols-6 gap-3 mt-8 pt-6 border-t border-white/[0.06]">
+            <div className="p-3.5 rounded-2xl bg-white/[0.02] border border-white/[0.05]">
               <span className="text-[11px] text-neutral-400 flex items-center gap-1">
-                <Award className="w-3 h-3 text-blue-400" /> Rank Score
+                <Award className="w-3 h-3 text-blue-400" /> Score
               </span>
               <p className="text-xl font-bold font-mono text-blue-400 mt-1">{user.score.toFixed(1)}</p>
             </div>
-            <div className="p-3 rounded-xl bg-neutral-950/40 border border-neutral-800/60">
+            <div className="p-3.5 rounded-2xl bg-white/[0.02] border border-white/[0.05]">
               <span className="text-[11px] text-neutral-400 flex items-center gap-1">
                 <GitCommit className="w-3 h-3 text-emerald-400" /> 365d Commits
               </span>
-              <p className="text-xl font-bold font-mono text-neutral-100 mt-1">
+              <p className="text-xl font-bold font-mono text-emerald-400 mt-1">
                 {user.totalContributions.toLocaleString()}
               </p>
             </div>
-            <div className="p-3 rounded-xl bg-neutral-950/40 border border-neutral-800/60">
+            <div className="p-3.5 rounded-2xl bg-white/[0.02] border border-white/[0.05]">
               <span className="text-[11px] text-neutral-400 flex items-center gap-1">
                 <Flame className="w-3 h-3 text-orange-400" /> 7d Velocity
               </span>
@@ -131,15 +178,15 @@ async function UserProfileContent({ params }: UserProfilePageProps) {
                 +{user.timeline?.last7Days || 0}
               </p>
             </div>
-            <div className="p-3 rounded-xl bg-neutral-950/40 border border-neutral-800/60">
+            <div className="p-3.5 rounded-2xl bg-white/[0.02] border border-white/[0.05]">
               <span className="text-[11px] text-neutral-400 flex items-center gap-1">
-                <Star className="w-3 h-3 text-yellow-400" /> Stars Received
+                <Star className="w-3 h-3 text-yellow-400" /> Stars
               </span>
               <p className="text-xl font-bold font-mono text-yellow-400 mt-1">
                 {user.starsReceived.toLocaleString()}
               </p>
             </div>
-            <div className="p-3 rounded-xl bg-neutral-950/40 border border-neutral-800/60">
+            <div className="p-3.5 rounded-2xl bg-white/[0.02] border border-white/[0.05]">
               <span className="text-[11px] text-neutral-400 flex items-center gap-1">
                 <GitFork className="w-3 h-3 text-purple-400" /> Forks
               </span>
@@ -147,7 +194,7 @@ async function UserProfileContent({ params }: UserProfilePageProps) {
                 {user.forksReceived.toLocaleString()}
               </p>
             </div>
-            <div className="p-3 rounded-xl bg-neutral-950/40 border border-neutral-800/60">
+            <div className="p-3.5 rounded-2xl bg-white/[0.02] border border-white/[0.05]">
               <span className="text-[11px] text-neutral-400 flex items-center gap-1">
                 <Users className="w-3 h-3 text-cyan-400" /> Followers
               </span>
@@ -158,58 +205,25 @@ async function UserProfileContent({ params }: UserProfilePageProps) {
           </div>
         </div>
 
-        {/* Contribution Activity Breakdown */}
-        <div className="grid grid-cols-1 md:grid-cols-3 gap-4">
-          <div className="p-6 rounded-2xl border border-neutral-800 bg-neutral-900/40">
-            <span className="text-xs text-neutral-400 uppercase tracking-wider font-semibold">
-              Recent Velocity (7 Days)
-            </span>
-            <div className="flex items-baseline gap-2 mt-2">
-              <span className="text-3xl font-black font-mono text-orange-400">
-                {user.timeline?.last7Days || 0}
-              </span>
-              <span className="text-xs text-neutral-500">public events</span>
-            </div>
-            <p className="text-xs text-neutral-500 mt-2">
-              Recent momentum weight in ranking score calculation.
-            </p>
-          </div>
+        {/* 1. Streak Stats Card (Mirroring github-readme-streak-stats) */}
+        <StreakStatsCard
+          streak={user.streak}
+          totalContributions={user.totalContributions}
+        />
 
-          <div className="p-6 rounded-2xl border border-neutral-800 bg-neutral-900/40">
-            <span className="text-xs text-neutral-400 uppercase tracking-wider font-semibold">
-              Monthly Active (30 Days)
-            </span>
-            <div className="flex items-baseline gap-2 mt-2">
-              <span className="text-3xl font-black font-mono text-emerald-400">
-                {user.timeline?.last30Days || 0}
-              </span>
-              <span className="text-xs text-neutral-500">public events</span>
-            </div>
-            <p className="text-xs text-neutral-500 mt-2">
-              Consistent monthly engagement across repositories.
-            </p>
-          </div>
+        {/* 2. Interactive 52-Week Contribution Calendar Heatmap */}
+        <ContributionHeatmap
+          weeks={user.calendarWeeks}
+          totalContributions={user.totalContributions}
+        />
 
-          <div className="p-6 rounded-2xl border border-neutral-800 bg-neutral-900/40">
-            <span className="text-xs text-neutral-400 uppercase tracking-wider font-semibold">
-              Annual Contributions (365 Days)
-            </span>
-            <div className="flex items-baseline gap-2 mt-2">
-              <span className="text-3xl font-black font-mono text-white">
-                {user.timeline?.last365Days.toLocaleString() || 0}
-              </span>
-              <span className="text-xs text-neutral-500">contributions</span>
-            </div>
-            <p className="text-xs text-neutral-500 mt-2">
-              Total contribution graph activity verified by GitHub.
-            </p>
-          </div>
-        </div>
+        {/* 3. Language & Technology Stack Breakdown */}
+        <LanguageBreakdownCard repositories={user.topRepositories} />
 
-        {/* Repositories showcase */}
+        {/* 4. Featured Public Repositories */}
         <div className="space-y-4">
           <div className="flex items-center justify-between">
-            <h2 className="text-lg font-bold text-white flex items-center gap-2">
+            <h2 className="text-base font-bold text-white flex items-center gap-2">
               <BookOpen className="w-5 h-5 text-blue-400" />
               Featured Public Repositories ({user.topRepositories?.length || 0})
             </h2>
@@ -222,7 +236,7 @@ async function UserProfileContent({ params }: UserProfilePageProps) {
                 href={repo.url}
                 target="_blank"
                 rel="noreferrer"
-                className="group p-5 rounded-2xl border border-neutral-800 bg-neutral-900/40 hover:bg-neutral-800/50 hover:border-neutral-700 transition-all flex flex-col justify-between"
+                className="group p-5 rounded-3xl border border-white/[0.08] bg-[#0e131f]/90 hover:bg-[#131b2e] hover:border-white/[0.16] transition-all flex flex-col justify-between shadow-xl"
               >
                 <div>
                   <div className="flex items-center justify-between gap-2">
@@ -238,9 +252,9 @@ async function UserProfileContent({ params }: UserProfilePageProps) {
                   )}
                 </div>
 
-                <div className="flex items-center gap-4 mt-4 pt-3 border-t border-neutral-800/60 text-xs text-neutral-400">
+                <div className="flex items-center gap-4 mt-4 pt-3 border-t border-white/[0.06] text-xs text-neutral-400">
                   {repo.primaryLanguage && (
-                    <span className="flex items-center gap-1.5">
+                    <span className="flex items-center gap-1.5 font-medium text-neutral-300">
                       <span className="w-2 h-2 rounded-full bg-blue-400" />
                       {repo.primaryLanguage}
                     </span>
@@ -258,7 +272,7 @@ async function UserProfileContent({ params }: UserProfilePageProps) {
             ))}
 
             {(!user.topRepositories || user.topRepositories.length === 0) && (
-              <div className="col-span-2 p-8 text-center text-neutral-500 border border-neutral-800 rounded-2xl">
+              <div className="col-span-2 p-8 text-center text-neutral-500 border border-white/[0.08] rounded-3xl">
                 No public non-fork repositories found for this account.
               </div>
             )}
@@ -273,7 +287,7 @@ export default function UserProfilePage(props: UserProfilePageProps) {
   return (
     <Suspense
       fallback={
-        <div className="min-h-screen bg-[#0a0a0a] text-neutral-200 p-8 flex items-center justify-center">
+        <div className="min-h-screen bg-[#080c14] text-neutral-200 p-8 flex items-center justify-center">
           <div className="animate-spin w-8 h-8 border-2 border-blue-500 border-t-transparent rounded-full" />
         </div>
       }
