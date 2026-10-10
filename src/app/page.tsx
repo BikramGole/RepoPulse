@@ -1,4 +1,5 @@
 import React, { Suspense } from "react";
+import Link from "next/link";
 import { connection } from "next/server";
 import { fetchGitHubFollowingStats } from "@/lib/github";
 import { LeaderboardTable } from "@/components/LeaderboardTable";
@@ -10,6 +11,7 @@ import {
   GitCommit,
   Sparkles,
   Zap,
+  BarChart3,
 } from "lucide-react";
 
 async function LeaderboardContainer() {
@@ -145,6 +147,14 @@ export default function HomePage() {
           </div>
 
           <div className="flex items-center gap-3">
+            <Link
+              href="/repos/BikramGole/KinaHub"
+              className="flex items-center gap-2 px-4 py-2.5 bg-gradient-to-r from-blue-600/30 to-cyan-600/30 hover:from-blue-600/50 hover:to-cyan-600/50 border border-cyan-500/30 text-cyan-300 hover:text-white rounded-2xl text-xs font-semibold transition-all shadow-sm"
+            >
+              <BarChart3 className="w-4 h-4 text-cyan-400" />
+              Repo Tracker
+            </Link>
+
             <a
               href="https://github.com/BikramGole/RepoPulse"
               target="_blank"
