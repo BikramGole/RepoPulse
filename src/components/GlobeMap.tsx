@@ -23,6 +23,9 @@ import {
   X,
 } from "lucide-react";
 
+// Module-level GeoJSON cache so switching tabs or re-mounting doesn't re-download or re-parse
+let cachedWorldGeoJson: WorldGeoJson | null = null;
+
 interface GlobeMapProps {
   users: RankedUser[];
 }
@@ -36,8 +39,9 @@ export function GlobeMap({ users }: GlobeMapProps) {
 
   const [mapMode, setMapMode] = useState<MapMode>("GLOBE");
   const [selectedCountryCode, setSelectedCountryCode] = useState<string | null>("NP");
-  const [geoJson, setGeoJson] = useState<WorldGeoJson | null>(null);
-  const [isLoadingGeo, setIsLoadingGeo] = useState(true);
+  // Module-level cached GeoJSON
+  const [geoJson, setGeoJson] = useState<WorldGeoJson | null>(cachedWorldGeoJson);
+  const [isLoadingGeo, setIsLoadingGeo] = useState(!cachedWorldGeoJson);
   const [isExporting, setIsExporting] = useState(false);
 
   // Measure container size
@@ -58,22 +62,27 @@ export function GlobeMap({ users }: GlobeMapProps) {
     return () => observer.disconnect();
   }, []);
 
-  // Fetch GeoJSON
+  // Fetch GeoJSON (with caching)
   useEffect(() => {
+    if (cachedWorldGeoJson) {
+      setGeoJson(cachedWorldGeoJson);
+      setIsLoadingGeo(false);
+      return;
+    }
+
     let isMounted = true;
 
     async function loadGeoJson() {
       try {
-        // Try local asset first
         let res = await fetch("/ne_110m_admin_0_countries.geojson");
         if (!res.ok) {
-          // Fallback to CDN
           res = await fetch(
             "https://cdn.jsdelivr.net/gh/nvkelso/natural-earth-vector@master/geojson/ne_110m_admin_0_countries.geojson"
           );
         }
         if (res.ok) {
           const data = await res.json();
+          cachedWorldGeoJson = data;
           if (isMounted) {
             setGeoJson(data);
             setIsLoadingGeo(false);
@@ -113,6 +122,21 @@ export function GlobeMap({ users }: GlobeMapProps) {
 
   const heatScale = useMemo(() => createHeatScale(countryCounts), [countryCounts]);
 
+  // Pre-compute country styles for 60fps silky smooth rotation without lag
+  const countryStyleMap = useMemo(() => {
+    const map = new Map<string, { fill: string; fillOpacity: number; count: number }>();
+    for (const [code, count] of countryCounts.entries()) {
+      const accent = COUNTRY_ACCENTS[code] || "#3b82f6";
+      const opacity = heatScale(count);
+      map.set(code, {
+        fill: accent,
+        fillOpacity: opacity,
+        count,
+      });
+    }
+    return map;
+  }, [countryCounts, heatScale]);
+
   // Zoom hook
   const nudgePanRef = useRef<
     ((anchorX: number, anchorY: number, scaleRatio: number, atZoom: number) => void) | null
@@ -137,7 +161,8 @@ export function GlobeMap({ users }: GlobeMapProps) {
     );
   });
 
-  // Rotation and dragging
+  // Rotation and dragging - autoRotate disabled by default per user request
+  // Globe only rotates when a country is selected (fly-to animation) or manually dragged
   const { rotation, pan, isDragging, didDrag, dragHandlers, nudgePan } = useGlobeRotation(
     selectedCountryCode,
     geoJson,
@@ -145,7 +170,7 @@ export function GlobeMap({ users }: GlobeMapProps) {
     mapMode,
     dimensions.width,
     dimensions.height,
-    true // autoRotate enabled
+    false // autoRotate disabled by default
   );
 
   useEffect(() => {
@@ -259,7 +284,7 @@ export function GlobeMap({ users }: GlobeMapProps) {
                   : "text-neutral-400 hover:text-white"
               }`}
             >
-              2D Planar
+              2D World Map
             </button>
           </div>
 
@@ -361,19 +386,20 @@ export function GlobeMap({ users }: GlobeMapProps) {
           {/* Countries */}
           <g>
             {mapPaths.map((country) => {
-              const count = countryCounts.get(country.id) || 0;
+              const style = countryStyleMap.get(country.id);
+              const count = style ? style.count : 0;
               const hasClassmates = count > 0;
               const isSelected = selectedCountryCode === country.id;
 
               if (!country.svgPath) return null;
 
-              // Color resolution
-              let fillColor = MAP_BASE_STYLING.defaultFill;
-              if (hasClassmates) {
-                const accent = COUNTRY_ACCENTS[country.id] || "#3b82f6";
-                const heatOpacity = heatScale(count);
-                fillColor = isSelected ? "#38bdf8" : accent;
-              }
+              const fillColor = isSelected
+                ? "#38bdf8"
+                : style?.fill || MAP_BASE_STYLING.defaultFill;
+
+              const fillOpacity = isSelected
+                ? 0.95
+                : style?.fillOpacity ?? 0.35;
 
               return (
                 <path
@@ -381,13 +407,7 @@ export function GlobeMap({ users }: GlobeMapProps) {
                   d={country.svgPath}
                   filter={isSelected ? "url(#globe-glow)" : undefined}
                   fill={fillColor}
-                  fillOpacity={
-                    hasClassmates
-                      ? isSelected
-                        ? 0.95
-                        : heatScale(count)
-                      : 0.35
-                  }
+                  fillOpacity={fillOpacity}
                   stroke={isSelected ? "#ffffff" : hasClassmates ? "#38bdf8" : "#334155"}
                   strokeWidth={isSelected ? 1.5 : hasClassmates ? 0.75 : 0.25}
                   style={{
