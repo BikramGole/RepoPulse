@@ -1,4 +1,6 @@
 import { GitHubUserStats, RepositorySummary } from "@/types";
+import { resolveUserLocation } from "@/lib/geo";
+import { computeStreakFromDays } from "@/lib/streak";
 
 const GITHUB_GRAPHQL_API = "https://api.github.com/graphql";
 
@@ -70,8 +72,10 @@ function processRawUser(node: RawGraphQLUser, now: Date): GitHubUserStats {
   const nowMs = now.getTime();
   const dayMs = 24 * 60 * 60 * 1000;
 
+  const allDays: Array<{ date: string; contributionCount: number }> = [];
   for (const week of weeks) {
     for (const day of week.contributionDays) {
+      allDays.push(day);
       const dayDate = new Date(day.date).getTime();
       const diffDays = Math.floor((nowMs - dayDate) / dayMs);
       if (diffDays >= 0 && diffDays <= 7) {
@@ -82,6 +86,9 @@ function processRawUser(node: RawGraphQLUser, now: Date): GitHubUserStats {
       }
     }
   }
+
+  const { streak } = computeStreakFromDays(allDays);
+  const country = resolveUserLocation(node.location);
 
   // Deterministic historical rank snapshot baseline based on login hash for realistic delta indicators
   const charSum = node.login.split("").reduce((acc, c) => acc + c.charCodeAt(0), 0);
@@ -94,6 +101,7 @@ function processRawUser(node: RawGraphQLUser, now: Date): GitHubUserStats {
     bio: node.bio,
     company: node.company,
     location: node.location,
+    country,
     websiteUrl: node.websiteUrl,
     twitterUsername: node.twitterUsername,
     followers: node.followers?.totalCount || 0,
@@ -109,6 +117,8 @@ function processRawUser(node: RawGraphQLUser, now: Date): GitHubUserStats {
     },
     topRepositories,
     historicalRank: Math.max(1, (charSum % 25) + 1 + fakeOffset),
+    streak,
+    calendarWeeks: weeks,
   };
 }
 
