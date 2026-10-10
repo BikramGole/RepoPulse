@@ -118,11 +118,135 @@ function processRawUser(node: RawGraphQLUser, now: Date): GitHubUserStats {
       last30Days,
       last365Days: totalContributions,
     },
+    streak,
     topRepositories,
     historicalRank: Math.max(1, (charSum % 25) + 1 + fakeOffset),
-    streak,
-    calendarWeeks: weeks,
   };
+}
+
+const STATS_BATCH_SIZE = 4;
+
+function summarizeErrors(errors: Array<{ message: string }>): string {
+  const unique = [...new Set(errors.map((e) => e.message))];
+  const shown = unique.slice(0, 3).join(", ");
+  return unique.length > 3 ? `${shown} (+${unique.length - 3} more)` : shown;
+}
+
+async function fetchFollowingLogins(
+  username: string,
+  authToken: string
+): Promise<string[]> {
+  const query = `
+    query FollowingLogins($login: String!) {
+      user(login: $login) {
+        following(first: 50) {
+          nodes { login }
+        }
+      }
+    }`;
+
+  const response = await fetch(GITHUB_GRAPHQL_API, {
+    method: "POST",
+    headers: {
+      "Content-Type": "application/json",
+      Authorization: `Bearer ${authToken}`,
+      "User-Agent": "CommitRank-App",
+    },
+    body: JSON.stringify({ query, variables: { login: username } }),
+  });
+
+  if (!response.ok) {
+    throw new Error(`GitHub API request failed with status ${response.status}`);
+  }
+
+  const payload = await response.json();
+  if (payload.errors && payload.errors.length > 0) {
+    throw new Error(`GitHub GraphQL API Error: ${summarizeErrors(payload.errors)}`);
+  }
+
+  const nodes = payload.data?.user?.following?.nodes || [];
+  return nodes.map((n: { login: string }) => n.login).filter(Boolean);
+}
+
+function repoFields(first: number): string {
+  return `
+    repositories(first: ${first}, ownerAffiliations: OWNER, privacy: PUBLIC, isFork: false, orderBy: {field: STARGAZERS, direction: DESC}) {
+      totalCount
+      nodes {
+        name
+        description
+        url
+        stargazerCount
+        forkCount
+        primaryLanguage { name }
+        isFork
+        updatedAt
+      }
+    }`;
+}
+
+async function fetchUsersStatsBatch(
+  logins: string[],
+  authToken: string
+): Promise<RawGraphQLUser[]> {
+  const aliases = logins
+    .map((login, i) => {
+      const isPrimary = i === 0;
+      return `u${i}: user(login: "${login}") {
+    login
+    name
+    avatarUrl
+    bio
+    company
+    location
+    websiteUrl
+    twitterUsername
+    followers { totalCount }
+    following { totalCount }${repoFields(isPrimary ? 20 : 10)}
+    contributionsCollection {
+      contributionCalendar {
+        totalContributions
+        weeks {
+          contributionDays {
+            contributionCount
+            date
+          }
+        }
+      }
+    }
+  }`;
+    })
+    .join("\n");
+
+  const query = `query UsersStatsBatch {\n${aliases}\n}`;
+
+  const response = await fetch(GITHUB_GRAPHQL_API, {
+    method: "POST",
+    headers: {
+      "Content-Type": "application/json",
+      Authorization: `Bearer ${authToken}`,
+      "User-Agent": "CommitRank-App",
+    },
+    body: JSON.stringify({ query }),
+  });
+
+  if (!response.ok) {
+    if (response.status === 401 || response.status === 403) {
+      throw new Error(
+        `GitHub API Authorization Failed (${response.status}). Please check your GITHUB_TOKEN.`
+      );
+    }
+    throw new Error(`GitHub API request failed with status ${response.status}`);
+  }
+
+  const payload = await response.json();
+  if (payload.errors && payload.errors.length > 0) {
+    throw new Error(`GitHub GraphQL API Error: ${summarizeErrors(payload.errors)}`);
+  }
+
+  return logins
+    .map((_, i) => payload.data?.[`u${i}`])
+    .filter((u): u is RawGraphQLUser => Boolean(u));
 }
 
 export async function fetchGitHubFollowingStats(
@@ -151,135 +275,25 @@ export async function fetchGitHubFollowingStats(
       if (!authToken) {
         throw new Error("No GITHUB_TOKEN configured. Please set GITHUB_TOKEN in .env.local.");
       }
-      const query = `
-        query GetClassmatesLeaderboard($login: String!) {
-          viewer: user(login: $login) {
-            login
-            name
-            avatarUrl
-            bio
-            company
-            location
-            websiteUrl
-            twitterUsername
-            followers { totalCount }
-            following { totalCount }
-            repositories(first: 20, ownerAffiliations: OWNER, privacy: PUBLIC, isFork: false, orderBy: {field: STARGAZERS, direction: DESC}) {
-              totalCount
-              nodes {
-                name
-                description
-                url
-                stargazerCount
-                forkCount
-                primaryLanguage { name }
-                isFork
-                updatedAt
-              }
-            }
-            contributionsCollection {
-              contributionCalendar {
-                totalContributions
-                weeks {
-                  contributionDays {
-                    contributionCount
-                    date
-                  }
-                }
-              }
-            }
-          }
-          user(login: $login) {
-            following(first: 50) {
-              pageInfo {
-                hasNextPage
-                endCursor
-              }
-              nodes {
-                login
-                name
-                avatarUrl
-                bio
-                company
-                location
-                websiteUrl
-                twitterUsername
-                followers { totalCount }
-                following { totalCount }
-                repositories(first: 10, ownerAffiliations: OWNER, privacy: PUBLIC, isFork: false, orderBy: {field: STARGAZERS, direction: DESC}) {
-                  totalCount
-                  nodes {
-                    name
-                    description
-                    url
-                    stargazerCount
-                    forkCount
-                    primaryLanguage { name }
-                    isFork
-                    updatedAt
-                  }
-                }
-                contributionsCollection {
-                  contributionCalendar {
-                    totalContributions
-                    weeks {
-                      contributionDays {
-                        contributionCount
-                        date
-                      }
-                    }
-                  }
-                }
-              }
-            }
-          }
-        }
-      `;
 
-      const response = await fetch(GITHUB_GRAPHQL_API, {
-        method: "POST",
-        headers: {
-          "Content-Type": "application/json",
-          Authorization: `Bearer ${authToken}`,
-          "User-Agent": "CommitRank-App",
-        },
-        body: JSON.stringify({
-          query,
-          variables: { login: username },
-        }),
-      });
-
-      if (!response.ok) {
-        if (response.status === 401 || response.status === 403) {
-          throw new Error(`GitHub API Authorization Failed (${response.status}). Please check your GITHUB_TOKEN.`);
-        }
-        throw new Error(`GitHub API request failed with status ${response.status}`);
-      }
-
-      const payload = await response.json();
-
-      if (payload.errors && payload.errors.length > 0) {
-        const errorMsg = payload.errors.map((e: { message: string }) => e.message).join(", ");
-        throw new Error(`GitHub GraphQL API Error: ${errorMsg}`);
-      }
+      const logins = await fetchFollowingLogins(username, authToken);
+      const ordered = [
+        username,
+        ...logins.filter((l) => l.toLowerCase() !== username.toLowerCase()),
+      ];
 
       const now = new Date();
       const results: GitHubUserStats[] = [];
       const seen = new Set<string>();
 
-      // Add the primary user (e.g. NeoXBikram)
-      if (payload.data?.viewer) {
-        const primary = processRawUser(payload.data.viewer, now);
-        results.push(primary);
-        seen.add(primary.login.toLowerCase());
-      }
-
-      // Add all followed classmates
-      const followingNodes = payload.data?.user?.following?.nodes || [];
-      for (const node of followingNodes) {
-        if (node && !seen.has(node.login.toLowerCase())) {
-          results.push(processRawUser(node, now));
-          seen.add(node.login.toLowerCase());
+      for (let i = 0; i < ordered.length; i += STATS_BATCH_SIZE) {
+        const chunk = ordered.slice(i, i + STATS_BATCH_SIZE);
+        const rawUsers = await fetchUsersStatsBatch(chunk, authToken);
+        for (const raw of rawUsers) {
+          if (raw && !seen.has(raw.login.toLowerCase())) {
+            results.push(processRawUser(raw, now));
+            seen.add(raw.login.toLowerCase());
+          }
         }
       }
 
