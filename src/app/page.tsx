@@ -1,4 +1,5 @@
 import React, { Suspense } from "react";
+import { connection } from "next/server";
 import { fetchGitHubFollowingStats } from "@/lib/github";
 import { LeaderboardTable } from "@/components/LeaderboardTable";
 import { GithubIcon } from "@/components/Icons";
@@ -12,6 +13,7 @@ import {
 } from "lucide-react";
 
 async function LeaderboardContainer() {
+  await connection();
   const token = process.env.GITHUB_TOKEN;
 
   if (!token) {
