@@ -1,3 +1,6 @@
+import { CountryInfo } from "@/lib/geo";
+import { StreakStats } from "@/lib/streak";
+
 export interface ContributionTimeline {
   last7Days: number;
   last30Days: number;
@@ -15,6 +18,15 @@ export interface RepositorySummary {
   updatedAt: string;
 }
 
+export interface ContributionCalendarDay {
+  date: string;
+  contributionCount: number;
+}
+
+export interface ContributionCalendarWeek {
+  contributionDays: ContributionCalendarDay[];
+}
+
 export interface GitHubUserStats {
   login: string;
   name: string | null;
@@ -22,6 +34,7 @@ export interface GitHubUserStats {
   bio: string | null;
   company: string | null;
   location: string | null;
+  country?: CountryInfo | null;
   websiteUrl: string | null;
   twitterUsername: string | null;
   followers: number;
@@ -33,6 +46,8 @@ export interface GitHubUserStats {
   timeline: ContributionTimeline;
   topRepositories: RepositorySummary[];
   historicalRank?: number;
+  streak?: StreakStats;
+  calendarWeeks?: ContributionCalendarWeek[];
 }
 
 export interface RankingWeights {
