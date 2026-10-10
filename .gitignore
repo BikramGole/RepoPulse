@@ -42,3 +42,7 @@ next-env.d.ts
 
 # nested reference repositories
 Githcharta/
+
+# data cache
+.cache/
+
