@@ -1,4 +1,4 @@
-import { readCacheFile, writeCacheFile } from "./cache";
+import { getOrSetCache } from "./cache";
 import {
   RepoInsightData,
   RepoOverview,
@@ -51,31 +51,12 @@ function buildPast30Days(): DayDataPoint[] {
   return days;
 }
 
-/**
- * Fetches comprehensive repository intelligence, pull requests, issues,
- * and contributors metrics like githubtracker.com
- */
-export async function fetchRepoInsights(
-  owner: string,
-  repo: string,
-  options: FetchOptions = {}
+async function fetchRepoInsightsFromGitHub(
+  cleanOwner: string,
+  cleanRepo: string,
+  token?: string
 ): Promise<RepoInsightData> {
-  const cleanOwner = owner.trim();
-  const cleanRepo = repo.trim();
-  const cacheKey = `repo_insights_${cleanOwner.toLowerCase()}_${cleanRepo.toLowerCase()}.json`;
-
-  if (!options.forceRefresh) {
-    const cached = await readCacheFile<RepoInsightData>(cacheKey);
-    if (cached) {
-      // 15-minute freshness check
-      const ageMs = Date.now() - new Date(cached.updatedAt).getTime();
-      if (ageMs < 15 * 60 * 1000) {
-        return cached;
-      }
-    }
-  }
-
-  const headers = getAuthHeaders(options.token);
+  const headers = getAuthHeaders(token);
 
   // 1. Fetch Repository Overview
   const repoRes = await fetch(`${GITHUB_API_BASE}/repos/${cleanOwner}/${cleanRepo}`, {
@@ -381,14 +362,33 @@ export async function fetchRepoInsights(
     updatedAt: new Date().toISOString(),
   };
 
-  // Cache asynchronously
-  try {
-    await writeCacheFile(cacheKey, insightData);
-  } catch (err) {
-    console.warn("Failed to write repo insight cache:", err);
-  }
-
   return insightData;
+}
+
+/**
+ * Fetches comprehensive repository intelligence, pull requests, issues,
+ * and contributors metrics like githubtracker.com
+ */
+export async function fetchRepoInsights(
+  owner: string,
+  repo: string,
+  options: FetchOptions = {}
+): Promise<RepoInsightData> {
+  const cleanOwner = owner.trim();
+  const cleanRepo = repo.trim();
+  const cacheKey = `repo_insights_${cleanOwner.toLowerCase()}_${cleanRepo.toLowerCase()}`;
+
+  const cached = await getOrSetCache(
+    cacheKey,
+    async () => fetchRepoInsightsFromGitHub(cleanOwner, cleanRepo, options.token),
+    {
+      forceRefresh: options.forceRefresh,
+      ttlMs: 15 * 60 * 1000,
+      graceMs: 24 * 60 * 60 * 1000,
+    }
+  );
+
+  return cached.data;
 }
 
 /**
