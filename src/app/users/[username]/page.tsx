@@ -1,4 +1,5 @@
 import React, { Suspense } from "react";
+import { connection } from "next/server";
 import Link from "next/link";
 import { fetchGitHubFollowingStats } from "@/lib/github";
 import { sortAndRankUsers } from "@/lib/ranking";
@@ -28,6 +29,7 @@ interface UserProfilePageProps {
 }
 
 async function UserProfileContent({ params }: UserProfilePageProps) {
+  await connection();
   const { username } = await params;
   const token = process.env.GITHUB_TOKEN;
 
