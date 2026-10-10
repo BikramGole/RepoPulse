@@ -14,6 +14,7 @@ import { POPULATED_COUNTRY_COLORS } from "@/lib/gitcharta/countryColors";
 import { getRegionName, getCountryFlag, UNKNOWN_REGION } from "@/lib/gitcharta/region";
 import {
   Globe,
+  Map as MapIcon,
   Camera,
   MapPin,
   ExternalLink,
@@ -28,6 +29,9 @@ import {
   Pause,
   ArrowUpRight,
   Sparkles,
+  Loader2,
+  ChevronDown,
+  AlertCircle,
 } from "lucide-react";
 
 interface UserAudienceMapProps {
@@ -35,6 +39,9 @@ interface UserAudienceMapProps {
   currentUserLogin: string;
   currentUserLocation?: string | null;
 }
+
+// Module-level GeoJSON cache to avoid redundant network fetching across renders
+let cachedWorldGeoJson: WorldGeoJson | null = null;
 
 export function UserAudienceMap({
   initialAudience,
@@ -48,14 +55,25 @@ export function UserAudienceMap({
   });
 
   const [audienceData, setAudienceData] = useState<UserAudienceData>(initialAudience);
+  const [activeUsername, setActiveUsername] = useState(currentUserLogin);
   const [activeTab, setActiveTab] = useState<AudienceType>("followers");
   const [mapMode, setMapMode] = useState<MapMode>("GLOBE");
   const [selectedCountryCode, setSelectedCountryCode] = useState<string | null>(null);
-  const [geoJson, setGeoJson] = useState<WorldGeoJson | null>(null);
-  const [isLoadingGeo, setIsLoadingGeo] = useState(true);
+  const [geoJson, setGeoJson] = useState<WorldGeoJson | null>(cachedWorldGeoJson);
+  const [isLoadingGeo, setIsLoadingGeo] = useState(!cachedWorldGeoJson);
   const [isExporting, setIsExporting] = useState(false);
   const [searchQuery, setSearchQuery] = useState("");
-  const [autoRotate, setAutoRotate] = useState(true);
+
+  // Turn off auto-rotation by default as requested: only rotate when country is selected
+  const [autoRotate, setAutoRotate] = useState(false);
+
+  // GitHub user network search
+  const [lookupInput, setLookupInput] = useState("");
+  const [isLookingUp, setIsLookingUp] = useState(false);
+  const [lookupError, setLookupError] = useState<string | null>(null);
+
+  // Pagination for displayed profile list to prevent DOM lag on 100+ accounts
+  const [visibleCount, setVisibleCount] = useState(30);
 
   // Measure container size
   useEffect(() => {
@@ -75,8 +93,14 @@ export function UserAudienceMap({
     return () => observer.disconnect();
   }, []);
 
-  // Fetch GeoJSON
+  // Fetch GeoJSON (with in-memory caching)
   useEffect(() => {
+    if (cachedWorldGeoJson) {
+      setGeoJson(cachedWorldGeoJson);
+      setIsLoadingGeo(false);
+      return;
+    }
+
     let isMounted = true;
 
     async function loadGeoJson() {
@@ -89,6 +113,7 @@ export function UserAudienceMap({
         }
         if (res.ok) {
           const data = await res.json();
+          cachedWorldGeoJson = data;
           if (isMounted) {
             setGeoJson(data);
             setIsLoadingGeo(false);
@@ -105,6 +130,34 @@ export function UserAudienceMap({
       isMounted = false;
     };
   }, []);
+
+  // Handle GitHub user search / lookup
+  const handleUserLookup = async (e?: React.FormEvent, usernameToSearch?: string) => {
+    if (e) e.preventDefault();
+    const targetUser = (usernameToSearch || lookupInput).trim();
+    if (!targetUser) return;
+
+    setIsLookingUp(true);
+    setLookupError(null);
+
+    try {
+      const res = await fetch(`/api/audience/${encodeURIComponent(targetUser)}`);
+      if (!res.ok) {
+        throw new Error(`Failed to load network for @${targetUser}`);
+      }
+      const data: UserAudienceData = await res.json();
+      setAudienceData(data);
+      setActiveUsername(data.username || targetUser);
+      setSelectedCountryCode(null);
+      setSearchQuery("");
+      setVisibleCount(30);
+      setLookupInput("");
+    } catch (err) {
+      setLookupError(err instanceof Error ? err.message : "Error analyzing network");
+    } finally {
+      setIsLookingUp(false);
+    }
+  };
 
   // Active profile list based on tab
   const activeProfiles: AudienceProfile[] = useMemo(() => {
@@ -137,6 +190,40 @@ export function UserAudienceMap({
 
   const heatScale = useMemo(() => createHeatScale(countryCounts), [countryCounts]);
 
+  // Pre-calculate country style map to fix rotation lag (prevents expensive math inside SVG render loop)
+  const countryStyleMap = useMemo(() => {
+    const map = new Map<
+      string,
+      {
+        fill: string;
+        fillOpacity: number;
+        stroke: string;
+        strokeWidth: number;
+        isSelected: boolean;
+        count: number;
+      }
+    >();
+
+    for (const [code, list] of profilesByCountry.entries()) {
+      if (code === UNKNOWN_REGION) continue;
+      const isSelected = selectedCountryCode === code;
+      const count = list.length;
+      const color = (POPULATED_COUNTRY_COLORS as Record<string, string>)[code] || "#3b82f6";
+      const opacity = isSelected ? 0.95 : heatScale(count);
+
+      map.set(code, {
+        fill: isSelected ? "#38bdf8" : color,
+        fillOpacity: opacity,
+        stroke: isSelected ? "#ffffff" : "#38bdf8",
+        strokeWidth: isSelected ? 1.5 : 0.75,
+        isSelected,
+        count,
+      });
+    }
+
+    return map;
+  }, [profilesByCountry, selectedCountryCode, heatScale]);
+
   const totalProfiles = activeProfiles.length;
   const unknownCount = profilesByCountry.get(UNKNOWN_REGION)?.length || 0;
   const locatedCount = totalProfiles - unknownCount;
@@ -166,7 +253,7 @@ export function UserAudienceMap({
     );
   });
 
-  // Rotation and dragging
+  // Rotation and dragging: autoRotate is false by default, only rotates on country selection or drag
   const { rotation, pan, isDragging, didDrag, dragHandlers, nudgePan } = useGlobeRotation(
     selectedCountryCode,
     geoJson,
@@ -213,6 +300,15 @@ export function UserAudienceMap({
     return list;
   }, [activeProfiles, selectedCountryCode, profilesByCountry, searchQuery]);
 
+  // Reset visibleCount when filters change
+  useEffect(() => {
+    setVisibleCount(30);
+  }, [activeTab, selectedCountryCode, searchQuery]);
+
+  const pagedProfiles = useMemo(() => {
+    return displayedProfiles.slice(0, visibleCount);
+  }, [displayedProfiles, visibleCount]);
+
   // Snapshot handler
   const handleSnapshot = () => {
     setIsExporting(true);
@@ -228,7 +324,7 @@ export function UserAudienceMap({
       const url = URL.createObjectURL(blob);
       const link = document.createElement("a");
       link.href = url;
-      link.download = `${currentUserLogin}-gitcharta-${activeTab}-${Date.now()}.svg`;
+      link.download = `${activeUsername}-gitcharta-${activeTab}-${Date.now()}.svg`;
       document.body.appendChild(link);
       link.click();
       document.body.removeChild(link);
@@ -267,12 +363,33 @@ export function UserAudienceMap({
             </span>
           </div>
 
-          <h3 className="text-xl font-black text-white tracking-tight flex items-center gap-2.5">
-            <span>Global Follower & Following Network</span>
-            <span className="px-2.5 py-0.5 rounded-full text-xs font-mono font-bold bg-white/[0.06] border border-white/[0.1] text-neutral-300">
-              @{currentUserLogin}
+          <div className="flex items-center gap-3 flex-wrap">
+            <h3 className="text-xl font-black text-white tracking-tight flex items-center gap-2.5">
+              <span>Global Follower & Following Network</span>
+            </h3>
+            <span className="px-3 py-1 rounded-full text-xs font-mono font-bold bg-cyan-500/15 border border-cyan-500/30 text-cyan-300 flex items-center gap-1.5">
+              <span>@{activeUsername}</span>
+              {activeUsername !== currentUserLogin && (
+                <button
+                  type="button"
+                  onClick={() => handleUserLookup(undefined, currentUserLogin)}
+                  className="text-neutral-400 hover:text-white transition-colors"
+                  title="Reset to profile owner"
+                >
+                  <X className="w-3.5 h-3.5" />
+                </button>
+              )}
             </span>
-          </h3>
+            {activeUsername !== currentUserLogin && (
+              <Link
+                href={`/users/${activeUsername}`}
+                className="text-xs font-mono text-cyan-400 hover:underline flex items-center gap-1"
+              >
+                View Full Profile
+                <ArrowUpRight className="w-3 h-3" />
+              </Link>
+            )}
+          </div>
 
           <p className="text-xs text-neutral-400 max-w-2xl leading-relaxed">
             Explore the worldwide footprint of developer connections. Click any country to filter
@@ -282,29 +399,31 @@ export function UserAudienceMap({
 
         {/* View Mode & Actions */}
         <div className="flex flex-wrap items-center gap-2.5">
-          {/* Map projection 3D vs 2D */}
-          <div className="flex items-center bg-black/40 border border-white/10 rounded-2xl p-1">
+          {/* Map projection 3D Globe vs 2D World Map */}
+          <div className="flex items-center bg-black/40 border border-white/10 rounded-2xl p-1 shadow-inner">
             <button
               type="button"
               onClick={() => setMapMode("GLOBE")}
-              className={`px-3 py-1.5 rounded-xl text-xs font-semibold transition-all ${
+              className={`flex items-center gap-1.5 px-3.5 py-1.5 rounded-xl text-xs font-semibold transition-all ${
                 mapMode === "GLOBE"
                   ? "bg-gradient-to-r from-blue-600 to-cyan-600 text-white shadow-lg shadow-cyan-500/20"
                   : "text-neutral-400 hover:text-white"
               }`}
             >
-              3D Globe
+              <Globe className="w-3.5 h-3.5" />
+              <span>3D Globe</span>
             </button>
             <button
               type="button"
               onClick={() => setMapMode("SPHERE")}
-              className={`px-3 py-1.5 rounded-xl text-xs font-semibold transition-all ${
+              className={`flex items-center gap-1.5 px-3.5 py-1.5 rounded-xl text-xs font-semibold transition-all ${
                 mapMode === "SPHERE"
                   ? "bg-gradient-to-r from-blue-600 to-cyan-600 text-white shadow-lg shadow-cyan-500/20"
                   : "text-neutral-400 hover:text-white"
               }`}
             >
-              2D Planar
+              <MapIcon className="w-3.5 h-3.5" />
+              <span>2D World Map</span>
             </button>
           </div>
 
@@ -334,6 +453,76 @@ export function UserAudienceMap({
           </button>
         </div>
       </div>
+
+      {/* GitHub Username Analysis & Lookup Area */}
+      <div className="p-4 rounded-2xl bg-[#060913] border border-white/[0.08] flex flex-col md:flex-row items-stretch md:items-center justify-between gap-4">
+        <div className="space-y-1">
+          <div className="flex items-center gap-2">
+            <Search className="w-4 h-4 text-cyan-400" />
+            <h4 className="text-xs font-bold text-white uppercase tracking-wider">
+              Analyze Any GitHub Developer Network
+            </h4>
+          </div>
+          <p className="text-[11px] text-neutral-400">
+            Type any GitHub username to map their followers and following globally.
+          </p>
+        </div>
+
+        <form onSubmit={handleUserLookup} className="flex items-center gap-2">
+          <div className="relative">
+            <span className="absolute left-3 top-1/2 -translate-y-1/2 text-neutral-500 font-mono text-xs">
+              @
+            </span>
+            <input
+              type="text"
+              value={lookupInput}
+              onChange={(e) => setLookupInput(e.target.value)}
+              placeholder="e.g. BikramGole, torvalds"
+              className="bg-[#0b101d] border border-white/[0.1] rounded-xl pl-7 pr-3 py-1.5 text-xs text-white placeholder-neutral-500 focus:outline-none focus:border-cyan-400/50 w-48 md:w-56 transition-colors"
+            />
+          </div>
+
+          <button
+            type="submit"
+            disabled={isLookingUp || !lookupInput.trim()}
+            className="px-3.5 py-1.5 rounded-xl bg-cyan-500 hover:bg-cyan-400 text-neutral-950 text-xs font-bold transition-all disabled:opacity-50 flex items-center gap-1.5 shadow-lg shadow-cyan-500/20"
+          >
+            {isLookingUp ? (
+              <Loader2 className="w-3.5 h-3.5 animate-spin" />
+            ) : (
+              <Sparkles className="w-3.5 h-3.5" />
+            )}
+            <span>{isLookingUp ? "Mapping…" : "Map User"}</span>
+          </button>
+        </form>
+      </div>
+
+      {/* Quick suggestions if user wants to explore other profiles */}
+      <div className="flex flex-wrap items-center gap-2 text-[11px] text-neutral-400">
+        <span className="font-mono text-neutral-500">Quick explore:</span>
+        {["BikramGole", "NeoXBikram", "torvalds", "shadcn"].map((preset) => (
+          <button
+            key={preset}
+            type="button"
+            onClick={() => handleUserLookup(undefined, preset)}
+            disabled={isLookingUp}
+            className={`px-2 py-0.5 rounded-lg border font-mono transition-all ${
+              activeUsername.toLowerCase() === preset.toLowerCase()
+                ? "bg-cyan-500/20 text-cyan-300 border-cyan-400/40"
+                : "bg-white/[0.03] text-neutral-400 border-white/[0.06] hover:text-white hover:bg-white/[0.06]"
+            }`}
+          >
+            @{preset}
+          </button>
+        ))}
+      </div>
+
+      {lookupError && (
+        <div className="flex items-center gap-2 p-3 rounded-xl bg-rose-500/10 border border-rose-500/20 text-rose-300 text-xs">
+          <AlertCircle className="w-4 h-4 shrink-0" />
+          <span>{lookupError}</span>
+        </div>
+      )}
 
       {/* Audience Category Tabs */}
       <div className="flex flex-wrap items-center justify-between gap-4">
@@ -527,19 +716,16 @@ export function UserAudienceMap({
               {/* Countries */}
               <g>
                 {mapPaths.map((country) => {
-                  const count = countryCounts.get(country.id) || 0;
-                  const hasProfiles = count > 0;
-                  const isSelected = selectedCountryCode === country.id;
-
                   if (!country.svgPath) return null;
 
-                  // Color resolution
-                  let fillColor = MAP_BASE_STYLING.defaultFill;
-                  if (hasProfiles) {
-                    fillColor = isSelected
-                      ? "#38bdf8"
-                      : (POPULATED_COUNTRY_COLORS as Record<string, string>)[country.id] || "#3b82f6";
-                  }
+                  const style = countryStyleMap.get(country.id);
+                  const isSelected = selectedCountryCode === country.id;
+                  const hasProfiles = Boolean(style);
+
+                  const fillColor = style ? style.fill : MAP_BASE_STYLING.defaultFill;
+                  const fillOpacity = style ? style.fillOpacity : 0.35;
+                  const strokeColor = isSelected ? "#ffffff" : hasProfiles ? "#38bdf8" : "#334155";
+                  const strokeWidth = isSelected ? 1.5 : hasProfiles ? 0.75 : 0.25;
 
                   return (
                     <path
@@ -547,20 +733,14 @@ export function UserAudienceMap({
                       d={country.svgPath}
                       filter={isSelected ? "url(#audience-glow)" : undefined}
                       fill={fillColor}
-                      fillOpacity={
-                        hasProfiles
-                          ? isSelected
-                            ? 0.95
-                            : heatScale(count)
-                          : 0.35
-                      }
-                      stroke={isSelected ? "#ffffff" : hasProfiles ? "#38bdf8" : "#334155"}
-                      strokeWidth={isSelected ? 1.5 : hasProfiles ? 0.75 : 0.25}
+                      fillOpacity={fillOpacity}
+                      stroke={strokeColor}
+                      strokeWidth={strokeWidth}
                       style={{
                         opacity: country.opacity,
                         pointerEvents: country.opacity < 0.15 ? "none" : "auto",
                       }}
-                      className="transition-[fill,stroke,opacity] duration-200 cursor-pointer hover:stroke-white hover:stroke-[1.5px] hover:fill-opacity-100"
+                      className="transition-[fill,stroke,opacity] duration-150 cursor-pointer hover:stroke-white hover:stroke-[1.5px] hover:fill-opacity-100"
                       onClick={(e) => {
                         if (didDrag()) {
                           e.stopPropagation();
@@ -570,7 +750,7 @@ export function UserAudienceMap({
                       }}
                     >
                       <title>
-                        {country.name} {count > 0 ? `(${count} ${activeTab})` : ""}
+                        {country.name} {style ? `(${style.count} ${activeTab})` : ""}
                       </title>
                     </path>
                   );
@@ -710,88 +890,106 @@ export function UserAudienceMap({
                 </p>
               </div>
             ) : (
-              displayedProfiles.map((profile) => (
-                <div
-                  key={profile.login}
-                  className="flex items-center justify-between p-2.5 rounded-2xl hover:bg-white/[0.04] transition-colors group"
-                >
-                  <div className="flex items-center gap-3 min-w-0">
-                    <div className="relative w-10 h-10 rounded-2xl overflow-hidden border border-white/10 group-hover:border-cyan-400/50 transition-colors flex-shrink-0">
-                      <Image
-                        src={profile.avatarUrl}
-                        alt={profile.login}
-                        fill
-                        unoptimized
-                        sizes="40px"
-                        className="object-cover"
-                      />
-                    </div>
-
-                    <div className="min-w-0">
-                      <div className="flex items-center gap-1.5 flex-wrap">
-                        <span className="text-xs font-bold text-white truncate group-hover:text-cyan-300 transition-colors">
-                          {profile.name || profile.login}
-                        </span>
-                        {profile.cohortRank && (
-                          <Link
-                            href={`/users/${profile.login}`}
-                            className="px-1.5 py-0.2 rounded-full text-[9px] font-mono font-bold bg-blue-500/20 text-blue-300 border border-blue-500/30 hover:bg-blue-500/30 transition-colors"
-                            title="Classmate Cohort Member"
-                          >
-                            Rank #{profile.cohortRank}
-                          </Link>
-                        )}
+              <>
+                {pagedProfiles.map((profile) => (
+                  <div
+                    key={profile.login}
+                    className="flex items-center justify-between p-2.5 rounded-2xl hover:bg-white/[0.04] transition-colors group"
+                  >
+                    <div className="flex items-center gap-3 min-w-0">
+                      <div className="relative w-10 h-10 rounded-2xl overflow-hidden border border-white/10 group-hover:border-cyan-400/50 transition-colors flex-shrink-0">
+                        <Image
+                          src={profile.avatarUrl}
+                          alt={profile.login}
+                          fill
+                          unoptimized
+                          sizes="40px"
+                          className="object-cover"
+                        />
                       </div>
 
-                      <div className="flex items-center gap-2 text-[11px] font-mono text-neutral-400 truncate">
-                        <span>@{profile.login}</span>
-                        {profile.country && profile.country !== UNKNOWN_REGION && (
-                          <span className="flex items-center gap-1 text-neutral-300">
-                            <span>{profile.countryFlag}</span>
-                            <span>{profile.countryName}</span>
+                      <div className="min-w-0">
+                        <div className="flex items-center gap-1.5 flex-wrap">
+                          <span className="text-xs font-bold text-white truncate group-hover:text-cyan-300 transition-colors">
+                            {profile.name || profile.login}
                           </span>
+                          {profile.cohortRank && (
+                            <Link
+                              href={`/users/${profile.login}`}
+                              className="px-1.5 py-0.2 rounded-full text-[9px] font-mono font-bold bg-blue-500/20 text-blue-300 border border-blue-500/30 hover:bg-blue-500/30 transition-colors"
+                              title="Classmate Cohort Member"
+                            >
+                              Rank #{profile.cohortRank}
+                            </Link>
+                          )}
+                        </div>
+
+                        <div className="flex items-center gap-2 text-[11px] font-mono text-neutral-400 truncate">
+                          <span>@{profile.login}</span>
+                          {profile.country && profile.country !== UNKNOWN_REGION && (
+                            <span className="flex items-center gap-1 text-neutral-300">
+                              <span>{profile.countryFlag}</span>
+                              <span>{profile.countryName}</span>
+                            </span>
+                          )}
+                        </div>
+
+                        {profile.bio && (
+                          <p className="text-[11px] text-neutral-400 line-clamp-1 mt-0.5">
+                            {profile.bio}
+                          </p>
                         )}
                       </div>
+                    </div>
 
-                      {profile.bio && (
-                        <p className="text-[11px] text-neutral-400 line-clamp-1 mt-0.5">
-                          {profile.bio}
-                        </p>
+                    {/* Actions */}
+                    <div className="flex items-center gap-1.5 flex-shrink-0 ml-3">
+                      {profile.cohortRank && (
+                        <Link
+                          href={`/users/${profile.login}`}
+                          className="p-1.5 rounded-xl bg-white/[0.04] hover:bg-white/[0.1] text-neutral-300 hover:text-white transition-colors"
+                          title="View Classmate Profile"
+                        >
+                          <Compass className="w-3.5 h-3.5 text-cyan-400" />
+                        </Link>
                       )}
+
+                      <a
+                        href={profile.url}
+                        target="_blank"
+                        rel="noreferrer"
+                        className="p-1.5 rounded-xl bg-white/[0.04] hover:bg-white/[0.1] text-neutral-400 hover:text-white transition-colors"
+                        title="Open GitHub Profile"
+                      >
+                        <ExternalLink className="w-3.5 h-3.5" />
+                      </a>
                     </div>
                   </div>
+                ))}
 
-                  {/* Actions */}
-                  <div className="flex items-center gap-1.5 flex-shrink-0 ml-3">
-                    {profile.cohortRank && (
-                      <Link
-                        href={`/users/${profile.login}`}
-                        className="p-1.5 rounded-xl bg-white/[0.04] hover:bg-white/[0.1] text-neutral-300 hover:text-white transition-colors"
-                        title="View Classmate Profile"
-                      >
-                        <Compass className="w-3.5 h-3.5 text-cyan-400" />
-                      </Link>
-                    )}
-
-                    <a
-                      href={profile.url}
-                      target="_blank"
-                      rel="noreferrer"
-                      className="p-1.5 rounded-xl bg-white/[0.04] hover:bg-white/[0.1] text-neutral-400 hover:text-white transition-colors"
-                      title="Open GitHub Profile"
+                {/* Show more button when there are more profiles than visibleCount */}
+                {displayedProfiles.length > visibleCount && (
+                  <div className="pt-2 pb-1 text-center">
+                    <button
+                      type="button"
+                      onClick={() => setVisibleCount((prev) => prev + 30)}
+                      className="px-4 py-2 rounded-xl bg-white/[0.05] hover:bg-white/[0.1] text-neutral-300 text-xs font-semibold transition-colors flex items-center justify-center gap-1.5 mx-auto w-full"
                     >
-                      <ExternalLink className="w-3.5 h-3.5" />
-                    </a>
+                      <ChevronDown className="w-3.5 h-3.5" />
+                      <span>
+                        Show More ({displayedProfiles.length - visibleCount} remaining)
+                      </span>
+                    </button>
                   </div>
-                </div>
-              ))
+                )}
+              </>
             )}
           </div>
 
           {/* List Footer Stats */}
           <div className="p-3 border-t border-white/[0.06] bg-[#050812] flex items-center justify-between text-[11px] font-mono text-neutral-400">
             <span>
-              Showing {displayedProfiles.length} of {totalProfiles} accounts
+              Showing {Math.min(visibleCount, displayedProfiles.length)} of {displayedProfiles.length} accounts
             </span>
             <span className="flex items-center gap-1 text-cyan-400">
               <Sparkles className="w-3 h-3" />
