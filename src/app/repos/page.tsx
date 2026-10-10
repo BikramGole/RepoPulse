@@ -1,8 +1,11 @@
 import { Metadata } from "next";
+import { connection } from "next/server";
 import { RepoTrackerView } from "@/components/repo-tracker/RepoTrackerView";
 import { fetchRepoInsights } from "@/lib/repoTracker";
 import Link from "next/link";
 import { ArrowLeft, BarChart3 } from "lucide-react";
+
+export const instant = false;
 
 export const metadata: Metadata = {
   title: "GitHub Repository Tracker & Insights | RepoPulse",
@@ -11,6 +14,7 @@ export const metadata: Metadata = {
 };
 
 export default async function ReposLandingPage() {
+  await connection();
   const defaultOwner = "BikramGole";
   const defaultRepo = "KinaHub";
 
