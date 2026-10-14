@@ -1,6 +1,6 @@
 "use client";
 
-import React from "react";
+import React, { useEffect, useId, useRef } from "react";
 import { RankingWeights, DEFAULT_WEIGHTS } from "@/types";
 import { Sliders, RotateCcw, X } from "lucide-react";
 
@@ -17,6 +17,24 @@ export function WeightSettingsModal({
   weights,
   onUpdateWeights,
 }: WeightSettingsModalProps) {
+  const titleId = useId();
+  const dialogRef = useRef<HTMLDivElement>(null);
+
+  useEffect(() => {
+    if (!isOpen) return;
+    const onKey = (e: KeyboardEvent) => {
+      if (e.key === "Escape") onClose();
+    };
+    document.addEventListener("keydown", onKey);
+    const prev = document.body.style.overflow;
+    document.body.style.overflow = "hidden";
+    dialogRef.current?.querySelector<HTMLElement>("button")?.focus();
+    return () => {
+      document.removeEventListener("keydown", onKey);
+      document.body.style.overflow = prev;
+    };
+  }, [isOpen, onClose]);
+
   if (!isOpen) return null;
 
   const handleChange = (key: keyof RankingWeights, value: number) => {
@@ -40,18 +58,30 @@ export function WeightSettingsModal({
   ];
 
   return (
-    <div className="fixed inset-0 z-50 flex items-center justify-center p-4 bg-black/80 backdrop-blur-sm">
-      <div className="relative w-full max-w-lg p-6 rounded-2xl bg-neutral-900 border border-neutral-800 shadow-2xl text-neutral-200">
+    <div
+      className="fixed inset-0 z-50 flex items-center justify-center p-4 bg-black/80 backdrop-blur-sm"
+      onClick={(e) => {
+        if (e.target === e.currentTarget) onClose();
+      }}
+    >
+      <div
+        ref={dialogRef}
+        role="dialog"
+        aria-modal="true"
+        aria-labelledby={titleId}
+        className="relative w-full max-w-lg p-6 rounded-2xl bg-neutral-900 border border-neutral-800 shadow-2xl text-neutral-200"
+      >
         <div className="flex items-center justify-between pb-4 border-b border-neutral-800">
           <div className="flex items-center gap-2">
-            <Sliders className="w-5 h-5 text-blue-400" />
-            <h3 className="text-lg font-bold text-white">Ranking Formula Weights</h3>
+            <Sliders className="w-5 h-5 text-blue-400" aria-hidden="true" />
+            <h3 id={titleId} className="text-lg font-bold text-white">Ranking Formula Weights</h3>
           </div>
           <button
             onClick={onClose}
-            className="p-1 rounded-lg text-neutral-400 hover:text-white hover:bg-neutral-800 transition-colors"
+            aria-label="Close weights dialog"
+            className="p-2 min-w-[44px] min-h-[44px] flex items-center justify-center rounded-lg text-neutral-300 hover:text-white hover:bg-neutral-800 transition-colors"
           >
-            <X className="w-5 h-5" />
+            <X className="w-5 h-5" aria-hidden="true" />
           </button>
         </div>
 
@@ -64,19 +94,21 @@ export function WeightSettingsModal({
             <div key={key} className="space-y-1.5 p-3 rounded-xl bg-neutral-950/50 border border-neutral-800/60">
               <div className="flex justify-between items-center text-sm">
                 <div>
-                  <span className="font-semibold text-neutral-200">{label}</span>
+                  <label htmlFor={`weight-${key}`} className="font-semibold text-neutral-200">{label}</label>
                   <p className="text-[11px] text-neutral-500">{desc}</p>
                 </div>
-                <span className="font-mono text-sm font-bold text-blue-400 ml-4">
+                <output htmlFor={`weight-${key}`} className="font-mono text-sm font-bold text-blue-400 ml-4" aria-live="polite">
                   {weights[key].toFixed(2)}x
-                </span>
+                </output>
               </div>
               <input
+                id={`weight-${key}`}
                 type="range"
                 min="0"
                 max={max}
                 step={step}
                 value={weights[key]}
+                aria-label={`${label} weight`}
                 onChange={(e) => handleChange(key, parseFloat(e.target.value))}
                 className="w-full h-1.5 bg-neutral-800 rounded-lg appearance-none cursor-pointer accent-blue-500"
               />
