@@ -1,7 +1,9 @@
 "use client";
 
-import React, { useState, useMemo } from "react";
+import React, { useState, useMemo, useDeferredValue, startTransition } from "react";
 import Link from "next/link";
+import Image from "next/image";
+import dynamic from "next/dynamic";
 import {
   GitHubUserStats,
   RankingWeights,
@@ -13,7 +15,22 @@ import { sortAndRankUsers, filterUsers } from "@/lib/ranking";
 import { Podium } from "./Podium";
 import { WeightSettingsModal } from "./WeightSettingsModal";
 import { AboutModal } from "./AboutModal";
-import { NetworkWorldMap } from "./NetworkWorldMap";
+// bundle-conditional: 3D globe (d3) only loads when the map tab is opened
+const NetworkWorldMap = dynamic(
+  () => import("./NetworkWorldMap").then((m) => m.NetworkWorldMap),
+  {
+    ssr: false,
+    loading: () => (
+      <div
+        className="w-full h-80 rounded-3xl border border-white/[0.08] bg-[#0e131f]/50 flex items-center justify-center gap-3"
+        role="status"
+      >
+        <div className="w-6 h-6 border-2 border-cyan-500/30 border-t-cyan-400 rounded-full animate-spin" aria-hidden="true" />
+        <span className="text-xs text-neutral-400 font-mono">Loading 3D globe…</span>
+      </div>
+    ),
+  }
+);
 import {
   Search,
   Sliders,
@@ -41,6 +58,8 @@ export function LeaderboardTable({ initialUsers }: LeaderboardTableProps) {
   const [sortBy, setSortBy] = useState<SortField>("score");
   const [sortDirection, setSortDirection] = useState<SortDirection>("desc");
   const [searchQuery, setSearchQuery] = useState("");
+  // rerender-use-deferred-value: keep typing responsive on large networks
+  const deferredQuery = useDeferredValue(searchQuery);
   const [filterTab, setFilterTab] = useState<"all" | "active7d" | "topStars" | "highContribs">("all");
   const [selectedCountryFilter, setSelectedCountryFilter] = useState<string>("ALL");
   const [viewMode, setViewMode] = useState<"table" | "map">("table");
@@ -76,7 +95,7 @@ export function LeaderboardTable({ initialUsers }: LeaderboardTableProps) {
   const filteredUsers = useMemo(() => {
     let result = filterUsers(
       rankedUsers,
-      searchQuery,
+      deferredQuery,
       filterTab === "highContribs" ? 50 : 0,
       filterTab === "active7d"
     );
@@ -90,7 +109,7 @@ export function LeaderboardTable({ initialUsers }: LeaderboardTableProps) {
     }
 
     return result;
-  }, [rankedUsers, searchQuery, filterTab, selectedCountryFilter]);
+  }, [rankedUsers, deferredQuery, filterTab, selectedCountryFilter]);
 
   // Paginated slice
   const totalPages = Math.ceil(filteredUsers.length / pageSize) || 1;
@@ -100,14 +119,20 @@ export function LeaderboardTable({ initialUsers }: LeaderboardTableProps) {
   }, [filteredUsers, page, pageSize]);
 
   const handleSort = (field: SortField) => {
-    if (sortBy === field) {
-      setSortDirection((prev) => (prev === "desc" ? "asc" : "desc"));
-    } else {
-      setSortBy(field);
-      setSortDirection("desc");
-    }
-    setPage(1);
+    // rerender-transitions: sorting is non-urgent, keep UI responsive
+    startTransition(() => {
+      if (sortBy === field) {
+        setSortDirection((prev) => (prev === "desc" ? "asc" : "desc"));
+      } else {
+        setSortBy(field);
+        setSortDirection("desc");
+      }
+      setPage(1);
+    });
   };
+
+  const sortAria = (field: SortField): "ascending" | "descending" | "none" =>
+    sortBy !== field ? "none" : sortDirection === "desc" ? "descending" : "ascending";
 
   const renderSortIndicator = (field: SortField) => {
     if (sortBy !== field) {
@@ -124,27 +149,35 @@ export function LeaderboardTable({ initialUsers }: LeaderboardTableProps) {
     <div className="w-full space-y-6">
       {/* Top Navigation Mode: Leaderboard Table vs GitCharta World Map */}
       <div className="flex flex-col sm:flex-row items-center justify-between gap-4 p-2 rounded-2xl bg-[#0e131f]/90 border border-white/[0.08] backdrop-blur-xl">
-        <div className="flex items-center gap-1.5 p-1 rounded-xl bg-neutral-950/80 border border-white/[0.05] w-full sm:w-auto">
+        <div
+          className="flex items-center gap-1.5 p-1 rounded-xl bg-neutral-950/80 border border-white/[0.05] w-full sm:w-auto"
+          role="tablist"
+          aria-label="Leaderboard view"
+        >
           <button
+            role="tab"
+            aria-selected={viewMode === "table"}
             onClick={() => setViewMode("table")}
-            className={`flex-1 sm:flex-none flex items-center justify-center gap-2 px-4 py-2 rounded-lg text-xs font-semibold transition-all ${
+            className={`flex-1 sm:flex-none flex items-center justify-center gap-2 px-4 py-2.5 min-h-[44px] rounded-lg text-xs font-semibold transition-all ${
               viewMode === "table"
                 ? "bg-blue-600 text-white shadow-lg shadow-blue-600/25"
-                : "text-neutral-400 hover:text-white"
+                : "text-neutral-300 hover:text-white"
             }`}
           >
-            <LayoutGrid className="w-3.5 h-3.5" />
+            <LayoutGrid className="w-3.5 h-3.5" aria-hidden="true" />
             Rankings & Leaderboard
           </button>
           <button
+            role="tab"
+            aria-selected={viewMode === "map"}
             onClick={() => setViewMode("map")}
-            className={`flex-1 sm:flex-none flex items-center justify-center gap-2 px-4 py-2 rounded-lg text-xs font-semibold transition-all ${
+            className={`flex-1 sm:flex-none flex items-center justify-center gap-2 px-4 py-2.5 min-h-[44px] rounded-lg text-xs font-semibold transition-all ${
               viewMode === "map"
                 ? "bg-gradient-to-r from-blue-600 to-cyan-600 text-white shadow-lg shadow-cyan-500/20"
-                : "text-neutral-400 hover:text-white"
+                : "text-neutral-300 hover:text-white"
             }`}
           >
-            <Globe className="w-3.5 h-3.5 text-cyan-300" />
+            <Globe className="w-3.5 h-3.5 text-cyan-300" aria-hidden="true" />
             GitCharta 3D Globe
           </button>
         </div>
@@ -152,16 +185,18 @@ export function LeaderboardTable({ initialUsers }: LeaderboardTableProps) {
         <div className="flex items-center gap-2 w-full sm:w-auto justify-end pr-2">
           <button
             onClick={() => setIsWeightModalOpen(true)}
-            className="flex items-center gap-1.5 px-3.5 py-2 bg-white/[0.04] hover:bg-white/[0.08] text-neutral-200 hover:text-white rounded-xl text-xs font-semibold border border-white/[0.08] transition-all"
+            aria-haspopup="dialog"
+            className="flex items-center gap-1.5 px-3.5 py-2.5 min-h-[44px] bg-white/[0.04] hover:bg-white/[0.08] text-neutral-200 hover:text-white rounded-xl text-xs font-semibold border border-white/[0.08] transition-all"
           >
-            <Sliders className="w-3.5 h-3.5 text-blue-400" />
+            <Sliders className="w-3.5 h-3.5 text-blue-400" aria-hidden="true" />
             Formula Weights
           </button>
           <button
             onClick={() => setIsAboutModalOpen(true)}
-            className="flex items-center gap-1.5 px-3 py-2 bg-white/[0.04] hover:bg-white/[0.08] text-neutral-400 hover:text-white rounded-xl text-xs font-medium border border-white/[0.08] transition-all"
+            aria-haspopup="dialog"
+            className="flex items-center gap-1.5 px-3 py-2.5 min-h-[44px] bg-white/[0.04] hover:bg-white/[0.08] text-neutral-300 hover:text-white rounded-xl text-xs font-medium border border-white/[0.08] transition-all"
           >
-            <Info className="w-3.5 h-3.5" />
+            <Info className="w-3.5 h-3.5" aria-hidden="true" />
             API Caveats
           </button>
         </div>
@@ -174,7 +209,7 @@ export function LeaderboardTable({ initialUsers }: LeaderboardTableProps) {
       {viewMode === "table" && (
         <>
           {/* Top 3 Podium */}
-          {filterTab === "all" && selectedCountryFilter === "ALL" && !searchQuery && (
+          {filterTab === "all" && selectedCountryFilter === "ALL" && !deferredQuery && (
             <Podium topUsers={rankedUsers.slice(0, 3)} />
           )}
 
@@ -182,133 +217,168 @@ export function LeaderboardTable({ initialUsers }: LeaderboardTableProps) {
           <div className="flex flex-col lg:flex-row items-stretch lg:items-center justify-between gap-4 p-4 rounded-3xl bg-[#0e131f]/90 border border-white/[0.08] backdrop-blur-xl shadow-xl">
             <div className="flex flex-1 flex-col sm:flex-row items-stretch sm:items-center gap-3">
               <div className="relative flex-1 max-w-md">
-                <Search className="w-4 h-4 text-neutral-400 absolute left-3.5 top-1/2 -translate-y-1/2" />
+                <label htmlFor="leaderboard-search" className="visually-hidden">
+                  Search classmates by username, name, or bio
+                </label>
+                <Search className="w-4 h-4 text-neutral-400 absolute left-3.5 top-1/2 -translate-y-1/2" aria-hidden="true" />
                 <input
-                  type="text"
+                  id="leaderboard-search"
+                  type="search"
+                  autoComplete="off"
                   placeholder="Search classmates by username, name, or bio..."
                   value={searchQuery}
                   onChange={(e) => {
                     setSearchQuery(e.target.value);
                     setPage(1);
                   }}
-                  className="w-full pl-10 pr-4 py-2.5 bg-neutral-950/80 border border-white/[0.08] rounded-2xl text-xs text-neutral-200 placeholder-neutral-500 focus:outline-none focus:border-blue-500 focus:ring-1 focus:ring-blue-500 transition-all font-sans"
+                  aria-describedby="leaderboard-result-count"
+                  className="w-full pl-10 pr-4 py-2.5 min-h-[44px] bg-neutral-950/80 border border-white/[0.08] rounded-2xl text-xs text-neutral-200 placeholder-neutral-500 focus:outline-none focus:border-blue-500 focus:ring-1 focus:ring-blue-500 transition-all font-sans"
                 />
               </div>
 
               {/* Country selector filter */}
-              <select
-                value={selectedCountryFilter}
-                onChange={(e) => {
-                  setSelectedCountryFilter(e.target.value);
-                  setPage(1);
-                }}
-                className="px-3.5 py-2.5 bg-neutral-950/80 border border-white/[0.08] rounded-2xl text-xs text-neutral-200 focus:outline-none focus:border-blue-500 transition-all cursor-pointer"
-              >
-                <option value="ALL">All Regions ({rankedUsers.length})</option>
-                {availableCountries.map((c) => (
-                  <option key={c.code} value={c.code}>
-                    {c.flag} {c.name} ({c.count})
-                  </option>
-                ))}
-              </select>
+              <div>
+                <label htmlFor="region-filter" className="visually-hidden">
+                  Filter by region
+                </label>
+                <select
+                  id="region-filter"
+                  value={selectedCountryFilter}
+                  onChange={(e) => {
+                    setSelectedCountryFilter(e.target.value);
+                    setPage(1);
+                  }}
+                  className="px-3.5 py-2.5 min-h-[44px] bg-neutral-950/80 border border-white/[0.08] rounded-2xl text-xs text-neutral-200 focus:outline-none focus:border-blue-500 transition-all cursor-pointer"
+                >
+                  <option value="ALL">All Regions ({rankedUsers.length})</option>
+                  {availableCountries.map((c) => (
+                    <option key={c.code} value={c.code}>
+                      {c.flag} {c.name} ({c.count})
+                    </option>
+                  ))}
+                </select>
+              </div>
             </div>
 
             {/* Quick Filter tabs */}
-            <div className="flex items-center gap-1 bg-neutral-950/80 p-1.5 rounded-2xl border border-white/[0.06] text-xs overflow-x-auto">
+            <div
+              className="flex items-center gap-1 bg-neutral-950/80 p-1.5 rounded-2xl border border-white/[0.06] text-xs overflow-x-auto"
+              role="group"
+              aria-label="Quick filters"
+            >
               <button
+                aria-pressed={filterTab === "all"}
                 onClick={() => { setFilterTab("all"); setPage(1); }}
-                className={`px-3 py-1.5 rounded-xl font-medium transition-all ${
-                  filterTab === "all" ? "bg-white/[0.1] text-white shadow-sm" : "text-neutral-400 hover:text-white"
+                className={`px-3 py-2 min-h-[44px] rounded-xl font-medium transition-all ${
+                  filterTab === "all" ? "bg-white/[0.1] text-white shadow-sm" : "text-neutral-300 hover:text-white"
                 }`}
               >
                 All ({rankedUsers.length})
               </button>
               <button
+                aria-pressed={filterTab === "active7d"}
                 onClick={() => { setFilterTab("active7d"); setPage(1); }}
-                className={`px-3 py-1.5 rounded-xl font-medium flex items-center gap-1 transition-all ${
-                  filterTab === "active7d" ? "bg-white/[0.1] text-emerald-400 shadow-sm" : "text-neutral-400 hover:text-white"
+                className={`px-3 py-2 min-h-[44px] rounded-xl font-medium flex items-center gap-1 transition-all ${
+                  filterTab === "active7d" ? "bg-white/[0.1] text-emerald-400 shadow-sm" : "text-neutral-300 hover:text-white"
                 }`}
               >
-                <Flame className="w-3.5 h-3.5 text-emerald-400" /> Active 7d
+                <Flame className="w-3.5 h-3.5 text-emerald-400" aria-hidden="true" /> Active 7d
               </button>
               <button
+                aria-pressed={filterTab === "topStars"}
                 onClick={() => { setFilterTab("topStars"); setPage(1); }}
-                className={`px-3 py-1.5 rounded-xl font-medium flex items-center gap-1 transition-all ${
-                  filterTab === "topStars" ? "bg-white/[0.1] text-yellow-400 shadow-sm" : "text-neutral-400 hover:text-white"
+                className={`px-3 py-2 min-h-[44px] rounded-xl font-medium flex items-center gap-1 transition-all ${
+                  filterTab === "topStars" ? "bg-white/[0.1] text-yellow-400 shadow-sm" : "text-neutral-300 hover:text-white"
                 }`}
               >
-                <Star className="w-3.5 h-3.5 text-yellow-400" /> Top Stars
+                <Star className="w-3.5 h-3.5 text-yellow-400" aria-hidden="true" /> Top Stars
               </button>
             </div>
           </div>
+          <p id="leaderboard-result-count" className="text-xs text-neutral-400 font-mono" role="status" aria-live="polite">
+            Showing {filteredUsers.length} of {rankedUsers.length} developers
+            {deferredQuery !== searchQuery ? " — updating…" : ""}
+          </p>
 
           {/* Leaderboard Table Container */}
           <div className="w-full overflow-hidden rounded-3xl border border-white/[0.08] bg-[#0e131f]/80 backdrop-blur-xl shadow-2xl">
             <div className="overflow-x-auto">
               <table className="w-full text-left border-collapse text-xs">
+                <caption className="visually-hidden">
+                  GitHub developer leaderboard, sortable by score, commits, velocity, stars, forks, followers, and repositories
+                </caption>
                 <thead>
-                  <tr className="border-b border-white/[0.08] bg-neutral-950/80 text-[11px] font-semibold uppercase tracking-wider text-neutral-400 select-none">
-                    <th className="py-4 pl-6 pr-2 w-16">Rank</th>
-                    <th className="py-4 px-4 min-w-[220px]">Developer</th>
-                    <th
-                      onClick={() => handleSort("score")}
-                      className="py-4 px-4 text-right cursor-pointer hover:text-white transition-colors"
-                    >
-                      Score {renderSortIndicator("score")}
+                  <tr className="border-b border-white/[0.08] bg-neutral-950/80 text-[11px] font-semibold uppercase tracking-wider text-neutral-300 select-none">
+                    <th scope="col" className="py-4 pl-6 pr-2 w-16">Rank</th>
+                    <th scope="col" className="py-4 px-4 min-w-[220px]">Developer</th>
+                    <th scope="col" aria-sort={sortAria("score")} className="py-4 px-4 text-right">
+                      <button
+                        onClick={() => handleSort("score")}
+                        aria-label={`Sort by score, currently ${sortAria("score")}`}
+                        className="inline-flex items-center justify-end gap-1 hover:text-white transition-colors min-h-[44px]"
+                      >
+                        Score {renderSortIndicator("score")}
+                      </button>
                     </th>
-                    <th
-                      onClick={() => handleSort("totalContributions")}
-                      className="py-4 px-4 text-right cursor-pointer hover:text-white transition-colors"
-                    >
-                      <span className="flex items-center justify-end gap-1">
-                        <GitCommit className="w-3.5 h-3.5 text-emerald-400" />
+                    <th scope="col" aria-sort={sortAria("totalContributions")} className="py-4 px-4 text-right">
+                      <button
+                        onClick={() => handleSort("totalContributions")}
+                        aria-label={`Sort by 365-day commits, currently ${sortAria("totalContributions")}`}
+                        className="inline-flex items-center justify-end gap-1 hover:text-white transition-colors min-h-[44px]"
+                      >
+                        <GitCommit className="w-3.5 h-3.5 text-emerald-400" aria-hidden="true" />
                         Commits (365d) {renderSortIndicator("totalContributions")}
-                      </span>
+                      </button>
                     </th>
-                    <th
-                      onClick={() => handleSort("recent7Days")}
-                      className="py-4 px-4 text-right cursor-pointer hover:text-white transition-colors"
-                    >
-                      <span className="flex items-center justify-end gap-1">
-                        <Flame className="w-3.5 h-3.5 text-orange-400" />
+                    <th scope="col" aria-sort={sortAria("recent7Days")} className="py-4 px-4 text-right">
+                      <button
+                        onClick={() => handleSort("recent7Days")}
+                        aria-label={`Sort by 7-day velocity, currently ${sortAria("recent7Days")}`}
+                        className="inline-flex items-center justify-end gap-1 hover:text-white transition-colors min-h-[44px]"
+                      >
+                        <Flame className="w-3.5 h-3.5 text-orange-400" aria-hidden="true" />
                         7d Vel {renderSortIndicator("recent7Days")}
-                      </span>
+                      </button>
                     </th>
-                    <th
-                      onClick={() => handleSort("starsReceived")}
-                      className="py-4 px-4 text-right cursor-pointer hover:text-white transition-colors"
-                    >
-                      <span className="flex items-center justify-end gap-1">
-                        <Star className="w-3.5 h-3.5 text-yellow-400" />
+                    <th scope="col" aria-sort={sortAria("starsReceived")} className="py-4 px-4 text-right">
+                      <button
+                        onClick={() => handleSort("starsReceived")}
+                        aria-label={`Sort by stars, currently ${sortAria("starsReceived")}`}
+                        className="inline-flex items-center justify-end gap-1 hover:text-white transition-colors min-h-[44px]"
+                      >
+                        <Star className="w-3.5 h-3.5 text-yellow-400" aria-hidden="true" />
                         Stars {renderSortIndicator("starsReceived")}
-                      </span>
+                      </button>
                     </th>
-                    <th
-                      onClick={() => handleSort("forksReceived")}
-                      className="py-4 px-4 text-right cursor-pointer hover:text-white transition-colors"
-                    >
-                      <span className="flex items-center justify-end gap-1">
-                        <GitFork className="w-3.5 h-3.5 text-purple-400" />
+                    <th scope="col" aria-sort={sortAria("forksReceived")} className="py-4 px-4 text-right">
+                      <button
+                        onClick={() => handleSort("forksReceived")}
+                        aria-label={`Sort by forks, currently ${sortAria("forksReceived")}`}
+                        className="inline-flex items-center justify-end gap-1 hover:text-white transition-colors min-h-[44px]"
+                      >
+                        <GitFork className="w-3.5 h-3.5 text-purple-400" aria-hidden="true" />
                         Forks {renderSortIndicator("forksReceived")}
-                      </span>
+                      </button>
                     </th>
-                    <th
-                      onClick={() => handleSort("followers")}
-                      className="py-4 px-4 text-right cursor-pointer hover:text-white transition-colors"
-                    >
-                      <span className="flex items-center justify-end gap-1">
-                        <Users className="w-3.5 h-3.5 text-blue-400" />
+                    <th scope="col" aria-sort={sortAria("followers")} className="py-4 px-4 text-right">
+                      <button
+                        onClick={() => handleSort("followers")}
+                        aria-label={`Sort by followers, currently ${sortAria("followers")}`}
+                        className="inline-flex items-center justify-end gap-1 hover:text-white transition-colors min-h-[44px]"
+                      >
+                        <Users className="w-3.5 h-3.5 text-blue-400" aria-hidden="true" />
                         Followers {renderSortIndicator("followers")}
-                      </span>
+                      </button>
                     </th>
-                    <th
-                      onClick={() => handleSort("publicRepos")}
-                      className="py-4 pr-6 pl-4 text-right cursor-pointer hover:text-white transition-colors"
-                    >
-                      <span className="flex items-center justify-end gap-1">
-                        <BookOpen className="w-3.5 h-3.5 text-sky-400" />
+                    <th scope="col" aria-sort={sortAria("publicRepos")} className="py-4 pr-6 pl-4 text-right">
+                      <button
+                        onClick={() => handleSort("publicRepos")}
+                        aria-label={`Sort by repositories, currently ${sortAria("publicRepos")}`}
+                        className="inline-flex items-center justify-end gap-1 hover:text-white transition-colors min-h-[44px]"
+                      >
+                        <BookOpen className="w-3.5 h-3.5 text-sky-400" aria-hidden="true" />
                         Repos {renderSortIndicator("publicRepos")}
-                      </span>
+                      </button>
                     </th>
                   </tr>
                 </thead>
@@ -318,15 +388,16 @@ export function LeaderboardTable({ initialUsers }: LeaderboardTableProps) {
                     const isTop2 = user.rank === 2;
                     const isTop3 = user.rank === 3;
 
-                    return (
+                      return (
                       <tr
                         key={user.login}
-                        className="hover:bg-white/[0.03] transition-colors group"
+                        className="leaderboard-row hover:bg-white/[0.03] transition-colors group"
                       >
                         {/* Rank & Delta Indicator */}
                         <td className="py-4 pl-6 pr-2 whitespace-nowrap">
                           <div className="flex items-center gap-2">
                             <span
+                              aria-label={`Rank ${user.rank}`}
                               className={`w-7 h-7 rounded-xl flex items-center justify-center font-mono font-bold text-xs ${
                                 isTop1
                                   ? "bg-amber-400/20 text-amber-300 border border-amber-400/40"
@@ -334,7 +405,7 @@ export function LeaderboardTable({ initialUsers }: LeaderboardTableProps) {
                                   ? "bg-slate-300/15 text-slate-200 border border-slate-300/30"
                                   : isTop3
                                   ? "bg-orange-500/20 text-orange-300 border border-orange-500/30"
-                                  : "text-neutral-400 font-normal"
+                                  : "text-neutral-300 font-normal"
                               }`}
                             >
                               {user.rank}
@@ -342,18 +413,27 @@ export function LeaderboardTable({ initialUsers }: LeaderboardTableProps) {
 
                             {user.rankDelta !== undefined && (
                               <span
+                                aria-label={
+                                  user.rankDelta > 0
+                                    ? `Climbed ${user.rankDelta} places`
+                                    : user.rankDelta < 0
+                                      ? `Dropped ${Math.abs(user.rankDelta)} places`
+                                      : "Rank unchanged"
+                                }
                                 className={`text-[10px] font-mono flex items-center ${
                                   user.rankDelta > 0
                                     ? "text-emerald-400"
                                     : user.rankDelta < 0
                                     ? "text-rose-400"
-                                    : "text-neutral-600"
+                                    : "text-neutral-500"
                                 }`}
                               >
-                                {user.rankDelta > 0 && "▲"}
-                                {user.rankDelta < 0 && "▼"}
-                                {user.rankDelta === 0 && "•"}
-                                {user.rankDelta !== 0 && Math.abs(user.rankDelta)}
+                                <span aria-hidden="true">
+                                  {user.rankDelta > 0 && "▲"}
+                                  {user.rankDelta < 0 && "▼"}
+                                  {user.rankDelta === 0 && "•"}
+                                  {user.rankDelta !== 0 && Math.abs(user.rankDelta)}
+                                </span>
                               </span>
                             )}
                           </div>
@@ -363,18 +443,25 @@ export function LeaderboardTable({ initialUsers }: LeaderboardTableProps) {
                         <td className="py-4 px-4 whitespace-nowrap">
                           <div className="flex items-center gap-3">
                             <div className="relative">
-                              <img
+                              <Image
                                 src={user.avatarUrl}
-                                alt={user.login}
+                                alt={`GitHub avatar of ${user.name || user.login}`}
+                                width={36}
+                                height={36}
+                                loading="lazy"
+                                sizes="36px"
                                 className="w-9 h-9 rounded-xl object-cover border border-white/10 flex-shrink-0"
                               />
                               {user.country && (
                                 <span
-                                  title={user.country.name}
+                                  aria-hidden="true"
                                   className="absolute -bottom-1 -right-1 text-[11px] leading-none drop-shadow-md"
                                 >
                                   {user.country.flag}
                                 </span>
+                              )}
+                              {user.country && (
+                                <span className="visually-hidden">{user.country.name}</span>
                               )}
                             </div>
                             <div className="min-w-0">
@@ -389,10 +476,10 @@ export function LeaderboardTable({ initialUsers }: LeaderboardTableProps) {
                                   href={`https://github.com/${user.login}`}
                                   target="_blank"
                                   rel="noreferrer"
-                                  title="Open on GitHub"
-                                  className="text-neutral-500 hover:text-neutral-300 transition-colors opacity-0 group-hover:opacity-100"
+                                  aria-label={`Open ${user.login} on GitHub (new tab)`}
+                                  className="text-neutral-400 hover:text-neutral-200 transition-colors focus-visible:opacity-100"
                                 >
-                                  <ExternalLink className="w-3 h-3" />
+                                  <ExternalLink className="w-3 h-3" aria-hidden="true" />
                                 </a>
                               </div>
                               <p className="text-[11px] text-neutral-400 font-mono">@{user.login}</p>
@@ -464,8 +551,11 @@ export function LeaderboardTable({ initialUsers }: LeaderboardTableProps) {
 
             {/* Pagination footer */}
             {totalPages > 1 && (
-              <div className="flex items-center justify-between px-6 py-4 border-t border-white/[0.06] bg-neutral-950/60 text-xs text-neutral-400">
-                <div>
+              <nav
+                aria-label="Leaderboard pagination"
+                className="flex items-center justify-between px-6 py-4 border-t border-white/[0.06] bg-neutral-950/60 text-xs text-neutral-300"
+              >
+                <div aria-live="polite">
                   Showing <span className="font-semibold text-white">{(page - 1) * pageSize + 1}</span> to{" "}
                   <span className="font-semibold text-white">
                     {Math.min(page * pageSize, filteredUsers.length)}
@@ -476,22 +566,24 @@ export function LeaderboardTable({ initialUsers }: LeaderboardTableProps) {
                   <button
                     disabled={page === 1}
                     onClick={() => setPage((p) => Math.max(1, p - 1))}
-                    className="px-3 py-1.5 rounded-xl border border-white/[0.08] bg-neutral-900 disabled:opacity-40 disabled:cursor-not-allowed hover:bg-neutral-800 text-neutral-200 transition-colors"
+                    aria-label="Go to previous page"
+                    className="px-3 py-2.5 min-h-[44px] rounded-xl border border-white/[0.08] bg-neutral-900 disabled:opacity-40 disabled:cursor-not-allowed hover:bg-neutral-800 text-neutral-200 transition-colors"
                   >
                     Previous
                   </button>
-                  <span className="px-2 font-mono">
+                  <span className="px-2 font-mono" aria-current="page">
                     {page} / {totalPages}
                   </span>
                   <button
                     disabled={page === totalPages}
                     onClick={() => setPage((p) => Math.min(totalPages, p + 1))}
-                    className="px-3 py-1.5 rounded-xl border border-white/[0.08] bg-neutral-900 disabled:opacity-40 disabled:cursor-not-allowed hover:bg-neutral-800 text-neutral-200 transition-colors"
+                    aria-label="Go to next page"
+                    className="px-3 py-2.5 min-h-[44px] rounded-xl border border-white/[0.08] bg-neutral-900 disabled:opacity-40 disabled:cursor-not-allowed hover:bg-neutral-800 text-neutral-200 transition-colors"
                   >
                     Next
                   </button>
                 </div>
-              </div>
+              </nav>
             )}
           </div>
         </>
