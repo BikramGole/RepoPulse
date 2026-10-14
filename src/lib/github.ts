@@ -1,11 +1,32 @@
-import fs from "fs";
-import path from "path";
 import { GitHubUserStats, RepositorySummary } from "@/types";
 import { resolveUserLocation } from "@/lib/geo";
 import { computeStreakFromDays } from "@/lib/streak";
 import { getOrSetCache } from "@/lib/cache";
+import { assertValidGitHubLogin, isValidGitHubLogin } from "@/lib/validation";
 
 const GITHUB_GRAPHQL_API = "https://api.github.com/graphql";
+const FETCH_TIMEOUT_MS = 12_000;
+const FETCH_CONCURRENCY = 3;
+
+async function graphqlFetch(query: string, variables: Record<string, unknown>, authToken: string) {
+  const ctrl = new AbortController();
+  const timer = setTimeout(() => ctrl.abort(), FETCH_TIMEOUT_MS);
+  try {
+    const response = await fetch(GITHUB_GRAPHQL_API, {
+      method: "POST",
+      headers: {
+        "Content-Type": "application/json",
+        Authorization: `Bearer ${authToken}`,
+        "User-Agent": "CommitRank-App",
+      },
+      body: JSON.stringify({ query, variables }),
+      signal: ctrl.signal,
+    });
+    return response;
+  } finally {
+    clearTimeout(timer);
+  }
+}
 
 interface RawGraphQLUser {
   login: string;
@@ -136,6 +157,7 @@ async function fetchFollowingLogins(
   username: string,
   authToken: string
 ): Promise<string[]> {
+  assertValidGitHubLogin(username, "username");
   const query = `
     query FollowingLogins($login: String!) {
       user(login: $login) {
@@ -145,15 +167,7 @@ async function fetchFollowingLogins(
       }
     }`;
 
-  const response = await fetch(GITHUB_GRAPHQL_API, {
-    method: "POST",
-    headers: {
-      "Content-Type": "application/json",
-      Authorization: `Bearer ${authToken}`,
-      "User-Agent": "CommitRank-App",
-    },
-    body: JSON.stringify({ query, variables: { login: username } }),
-  });
+  const response = await graphqlFetch(query, { login: username }, authToken);
 
   if (!response.ok) {
     throw new Error(`GitHub API request failed with status ${response.status}`);
@@ -169,8 +183,9 @@ async function fetchFollowingLogins(
 }
 
 function repoFields(first: number): string {
+  const n = Number.isFinite(first) ? Math.min(Math.max(Math.floor(first), 1), 30) : 10;
   return `
-    repositories(first: ${first}, ownerAffiliations: OWNER, privacy: PUBLIC, isFork: false, orderBy: {field: STARGAZERS, direction: DESC}) {
+    repositories(first: ${n}, ownerAffiliations: OWNER, privacy: PUBLIC, isFork: false, orderBy: {field: STARGAZERS, direction: DESC}) {
       totalCount
       nodes {
         name
@@ -189,6 +204,9 @@ async function fetchUsersStatsBatch(
   logins: string[],
   authToken: string
 ): Promise<RawGraphQLUser[]> {
+  // Defense-in-depth: logins are interpolated into alias blocks (GraphQL has no
+  // alias variables), so reject anything outside the strict GitHub login shape.
+  for (const login of logins) assertValidGitHubLogin(login, "login");
   const aliases = logins
     .map((login, i) => {
       const isPrimary = i === 0;
@@ -220,15 +238,7 @@ async function fetchUsersStatsBatch(
 
   const query = `query UsersStatsBatch {\n${aliases}\n}`;
 
-  const response = await fetch(GITHUB_GRAPHQL_API, {
-    method: "POST",
-    headers: {
-      "Content-Type": "application/json",
-      Authorization: `Bearer ${authToken}`,
-      "User-Agent": "CommitRank-App",
-    },
-    body: JSON.stringify({ query }),
-  });
+  const response = await graphqlFetch(query, {}, authToken);
 
   if (!response.ok) {
     if (response.status === 401 || response.status === 403) {
@@ -254,18 +264,8 @@ export async function fetchGitHubFollowingStats(
   token?: string,
   forceRefresh: boolean = false
 ): Promise<GitHubUserStats[]> {
-  let authToken = token || process.env.GITHUB_TOKEN;
-  if (!authToken) {
-    try {
-      const envPath = path.resolve(process.cwd(), ".env.local");
-      if (fs.existsSync(envPath)) {
-        const match = fs.readFileSync(envPath, "utf8").match(/GITHUB_TOKEN=([^\r\n]+)/);
-        if (match) authToken = match[1].trim();
-      }
-    } catch {
-      // ignore
-    }
-  }
+  assertValidGitHubLogin(username, "username");
+  const authToken = token || process.env.GITHUB_TOKEN;
 
   const cacheKey = `github-classmates-${username.toLowerCase()}`;
 
@@ -279,16 +279,25 @@ export async function fetchGitHubFollowingStats(
       const logins = await fetchFollowingLogins(username, authToken);
       const ordered = [
         username,
-        ...logins.filter((l) => l.toLowerCase() !== username.toLowerCase()),
+        ...logins.filter(
+          (l) => isValidGitHubLogin(l) && l.toLowerCase() !== username.toLowerCase()
+        ),
       ];
 
       const now = new Date();
+      const chunks: string[][] = [];
+      for (let i = 0; i < ordered.length; i += STATS_BATCH_SIZE) {
+        chunks.push(ordered.slice(i, i + STATS_BATCH_SIZE));
+      }
+
+      // server-parallel-fetching: run chunks with bounded concurrency instead of serially
+      const settled = await mapWithConcurrency(chunks, FETCH_CONCURRENCY, (chunk) =>
+        fetchUsersStatsBatch(chunk, authToken)
+      );
+
       const results: GitHubUserStats[] = [];
       const seen = new Set<string>();
-
-      for (let i = 0; i < ordered.length; i += STATS_BATCH_SIZE) {
-        const chunk = ordered.slice(i, i + STATS_BATCH_SIZE);
-        const rawUsers = await fetchUsersStatsBatch(chunk, authToken);
+      for (const rawUsers of settled) {
         for (const raw of rawUsers) {
           if (raw && !seen.has(raw.login.toLowerCase())) {
             results.push(processRawUser(raw, now));
@@ -303,4 +312,21 @@ export async function fetchGitHubFollowingStats(
   );
 
   return data;
+}
+
+async function mapWithConcurrency<T, R>(
+  items: T[],
+  concurrency: number,
+  fn: (item: T) => Promise<R>
+): Promise<R[]> {
+  const out: R[] = new Array(items.length);
+  let next = 0;
+  const workers = Array.from({ length: Math.min(concurrency, items.length) }, async () => {
+    while (next < items.length) {
+      const idx = next++;
+      out[idx] = await fn(items[idx]);
+    }
+  });
+  await Promise.all(workers);
+  return out;
 }
