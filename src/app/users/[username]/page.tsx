@@ -119,12 +119,17 @@ async function UserProfileContent({ params }: UserProfilePageProps) {
               <div className="relative">
                 <img
                   src={user.avatarUrl}
-                  alt={user.login}
+                  alt={`GitHub avatar of ${user.name || user.login}`}
+                  width={112}
+                  height={112}
+                  loading="eager"
+                  decoding="async"
                   className="w-24 h-24 md:w-28 md:h-28 rounded-3xl border-2 border-white/20 object-cover shadow-2xl"
                 />
-                <span className="absolute -bottom-2 -right-2 text-2xl drop-shadow-md">
+                <span aria-hidden="true" className="absolute -bottom-2 -right-2 text-2xl drop-shadow-md">
                   {countryFlag}
                 </span>
+                <span className="visually-hidden">{countryName}</span>
               </div>
 
               <div className="space-y-1.5">
