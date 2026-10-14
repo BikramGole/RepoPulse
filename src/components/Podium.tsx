@@ -2,6 +2,7 @@
 
 import React from "react";
 import Link from "next/link";
+import Image from "next/image";
 import { RankedUser } from "@/types";
 import { ArrowUpRight, Flame, Star, GitCommit } from "lucide-react";
 import { CrownIcon } from "./Icons";
@@ -58,23 +59,23 @@ export function Podium({ topUsers }: PodiumProps) {
   ];
 
   return (
-    <div className="w-full mb-10">
+    <section aria-labelledby="podium-heading" className="w-full mb-10">
       <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-3 mb-6">
         <div>
           <div className="flex items-center gap-2 text-xs font-semibold uppercase tracking-wider text-amber-400">
-            <span className="inline-block w-2 h-2 rounded-full bg-amber-400 animate-pulse" />
+            <span className="inline-block w-2 h-2 rounded-full bg-amber-400 animate-pulse" aria-hidden="true" />
             Top Ranked Classmates
           </div>
-          <h2 className="text-2xl font-bold tracking-tight text-white mt-1">
+          <h2 id="podium-heading" className="text-2xl font-bold tracking-tight text-white mt-1">
             Hall of Fame Podium
           </h2>
         </div>
-        <p className="text-xs text-neutral-400 max-w-xs sm:text-right">
+        <p className="text-xs text-neutral-300 max-w-xs sm:text-right">
           Scored by verified public commits, developer velocity, and repository stargazers.
         </p>
       </div>
 
-      <div className="grid grid-cols-1 md:grid-cols-3 gap-5 items-end max-w-4xl mx-auto">
+      <ol className="grid grid-cols-1 md:grid-cols-3 gap-5 items-end max-w-4xl mx-auto list-none p-0 m-0">
         {cards.map(
           ({
             user,
@@ -88,8 +89,9 @@ export function Podium({ topUsers }: PodiumProps) {
             borderColor,
             isChampion,
           }) => (
-            <div
+            <li
               key={user.login}
+              aria-label={`Rank ${place}: ${user.name || user.login}`}
               className={`relative flex flex-col justify-between p-6 rounded-3xl bg-gradient-to-b ${accentGlow} bg-[#0e131f]/90 border ${borderColor} backdrop-blur-xl shadow-2xl transition-all duration-300 hover:scale-[1.02] hover:-translate-y-1 ${height} ${order}`}
             >
               {/* Champion crown crown tag */}
@@ -103,10 +105,14 @@ export function Podium({ topUsers }: PodiumProps) {
               {/* Header profile area */}
               <div className="flex flex-col items-center text-center pt-2">
                 <div className="relative mb-3.5">
-                  <img
+                  <Image
                     src={user.avatarUrl}
-                    alt={user.login}
-                    className={`w-18 h-18 rounded-2xl object-cover shadow-2xl ring-2 ${ringColor}`}
+                    alt={`GitHub avatar of ${user.name || user.login}, ranked ${badgeText}`}
+                    width={72}
+                    height={72}
+                    loading="lazy"
+                    sizes="72px"
+                    className={`w-[72px] h-[72px] rounded-2xl object-cover shadow-2xl ring-2 ${ringColor}`}
                   />
                   <span
                     className={`absolute -bottom-2 -right-2 px-2 py-0.5 rounded-lg font-mono font-bold text-[10px] border shadow-md ${badgeBg}`}
@@ -173,10 +179,10 @@ export function Podium({ topUsers }: PodiumProps) {
                   </div>
                 </div>
               </div>
-            </div>
+            </li>
           )
         )}
-      </div>
-    </div>
+      </ol>
+    </section>
   );
 }
