@@ -6,17 +6,34 @@ import {
   SortField,
   SortDirection,
 } from "@/types";
+import { sanitizeWeight } from "@/lib/validation";
+
+function sanitizeWeights(weights: RankingWeights): RankingWeights {
+  return {
+    contributions: sanitizeWeight(weights.contributions, DEFAULT_WEIGHTS.contributions),
+    stars: sanitizeWeight(weights.stars, DEFAULT_WEIGHTS.stars),
+    forks: sanitizeWeight(weights.forks, DEFAULT_WEIGHTS.forks),
+    followers: sanitizeWeight(weights.followers, DEFAULT_WEIGHTS.followers),
+    recentActivity: sanitizeWeight(weights.recentActivity, DEFAULT_WEIGHTS.recentActivity),
+    repos: sanitizeWeight(weights.repos, DEFAULT_WEIGHTS.repos),
+  };
+}
+
+function num(value: unknown): number {
+  return typeof value === "number" && Number.isFinite(value) && value >= 0 ? value : 0;
+}
 
 export function calculateUserScore(
   user: GitHubUserStats,
   weights: RankingWeights = DEFAULT_WEIGHTS
 ): { score: number; breakdown: RankedUser["scoreBreakdown"] } {
-  const contributions = (user.totalContributions || 0) * weights.contributions;
-  const stars = (user.starsReceived || 0) * weights.stars;
-  const forks = (user.forksReceived || 0) * weights.forks;
-  const followers = (user.followers || 0) * weights.followers;
-  const recentActivity = ((user.timeline?.last30Days || 0) * 1.5 + (user.timeline?.last7Days || 0) * 2.0) * weights.recentActivity;
-  const repos = (user.publicRepos || 0) * weights.repos;
+  const w = sanitizeWeights(weights);
+  const contributions = num(user.totalContributions) * w.contributions;
+  const stars = num(user.starsReceived) * w.stars;
+  const forks = num(user.forksReceived) * w.forks;
+  const followers = num(user.followers) * w.followers;
+  const recentActivity = (num(user.timeline?.last30Days) * 1.5 + num(user.timeline?.last7Days) * 2.0) * w.recentActivity;
+  const repos = num(user.publicRepos) * w.repos;
 
   const total = contributions + stars + forks + followers + recentActivity + repos;
 
