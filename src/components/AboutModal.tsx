@@ -1,4 +1,4 @@
-import React from "react";
+import React, { useEffect, useId, useRef } from "react";
 import { Info, X, ShieldAlert, Cpu, Sparkles } from "lucide-react";
 
 interface AboutModalProps {
@@ -7,21 +7,51 @@ interface AboutModalProps {
 }
 
 export function AboutModal({ isOpen, onClose }: AboutModalProps) {
+  const titleId = useId();
+  const dialogRef = useRef<HTMLDivElement>(null);
+
+  useEffect(() => {
+    if (!isOpen) return;
+    const onKey = (e: KeyboardEvent) => {
+      if (e.key === "Escape") onClose();
+    };
+    document.addEventListener("keydown", onKey);
+    const prev = document.body.style.overflow;
+    document.body.style.overflow = "hidden";
+    dialogRef.current?.querySelector<HTMLElement>("button")?.focus();
+    return () => {
+      document.removeEventListener("keydown", onKey);
+      document.body.style.overflow = prev;
+    };
+  }, [isOpen, onClose]);
+
   if (!isOpen) return null;
 
   return (
-    <div className="fixed inset-0 z-50 flex items-center justify-center p-4 bg-black/80 backdrop-blur-sm">
-      <div className="relative w-full max-w-xl p-6 rounded-2xl bg-neutral-900 border border-neutral-800 shadow-2xl text-neutral-200">
+    <div
+      className="fixed inset-0 z-50 flex items-center justify-center p-4 bg-black/80 backdrop-blur-sm"
+      onClick={(e) => {
+        if (e.target === e.currentTarget) onClose();
+      }}
+    >
+      <div
+        ref={dialogRef}
+        role="dialog"
+        aria-modal="true"
+        aria-labelledby={titleId}
+        className="relative w-full max-w-xl p-6 rounded-2xl bg-neutral-900 border border-neutral-800 shadow-2xl text-neutral-200"
+      >
         <div className="flex items-center justify-between pb-4 border-b border-neutral-800">
           <div className="flex items-center gap-2">
-            <Info className="w-5 h-5 text-emerald-400" />
-            <h3 className="text-lg font-bold text-white">About CommitRank & Data Accuracy</h3>
+            <Info className="w-5 h-5 text-emerald-400" aria-hidden="true" />
+            <h3 id={titleId} className="text-lg font-bold text-white">About CommitRank & Data Accuracy</h3>
           </div>
           <button
             onClick={onClose}
-            className="p-1 rounded-lg text-neutral-400 hover:text-white hover:bg-neutral-800 transition-colors"
+            aria-label="Close about dialog"
+            className="p-2 min-w-[44px] min-h-[44px] flex items-center justify-center rounded-lg text-neutral-300 hover:text-white hover:bg-neutral-800 transition-colors"
           >
-            <X className="w-5 h-5" />
+            <X className="w-5 h-5" aria-hidden="true" />
           </button>
         </div>
 
