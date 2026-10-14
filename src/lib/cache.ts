@@ -16,8 +16,20 @@ export interface CacheOptions {
 const DEFAULT_TTL_MS = 15 * 60 * 1000; // 15 minutes
 const DEFAULT_GRACE_MS = 24 * 60 * 60 * 1000; // 24 hours
 
-// In-Memory RAM Cache (Level 1)
+// In-Memory RAM Cache (Level 1) — bounded LRU to avoid unbounded growth
 const memoryStore = new Map<string, CacheEntry<unknown>>();
+const MAX_MEMORY_ENTRIES = 100;
+
+function setMemory(key: string, entry: CacheEntry<unknown>) {
+  // Refresh LRU order
+  if (memoryStore.has(key)) memoryStore.delete(key);
+  memoryStore.set(key, entry);
+  while (memoryStore.size > MAX_MEMORY_ENTRIES) {
+    const oldest = memoryStore.keys().next().value as string | undefined;
+    if (!oldest) break;
+    memoryStore.delete(oldest);
+  }
+}
 
 // Disk Cache Directory (Level 2)
 const CACHE_DIR = process.env.VERCEL
@@ -37,20 +49,40 @@ function ensureCacheDir() {
   }
 }
 
+function isValidEntry(value: unknown): value is CacheEntry<unknown> {
+  if (typeof value !== "object" || value === null) return false;
+  const v = value as Record<string, unknown>;
+  return (
+    typeof v.key === "string" &&
+    typeof v.timestamp === "number" &&
+    Number.isFinite(v.timestamp) &&
+    "data" in v
+  );
+}
+
 function readDiskCache(): Record<string, CacheEntry<unknown>> {
   try {
-    if (fs.existsSync(CACHE_FILE)) {
-      const content = fs.readFileSync(CACHE_FILE, "utf8");
-      return JSON.parse(content);
+    const file = fs.existsSync(CACHE_FILE)
+      ? CACHE_FILE
+      : fs.existsSync(SEED_CACHE_FILE)
+        ? SEED_CACHE_FILE
+        : null;
+    if (!file) return {};
+    const stat = fs.statSync(file);
+    // database-design: guard against pathological cache files (DoS via disk)
+    if (stat.size > 10 * 1024 * 1024) return {};
+    const content = fs.readFileSync(file, "utf8");
+    const parsed: unknown = JSON.parse(content);
+    if (typeof parsed !== "object" || parsed === null) return {};
+    const out: Record<string, CacheEntry<unknown>> = {};
+    for (const [k, v] of Object.entries(parsed as Record<string, unknown>)) {
+      if (typeof k === "string" && k.length <= 200 && isValidEntry(v)) out[k] = v;
+      if (Object.keys(out).length >= MAX_MEMORY_ENTRIES) break;
     }
-    if (fs.existsSync(SEED_CACHE_FILE)) {
-      const content = fs.readFileSync(SEED_CACHE_FILE, "utf8");
-      return JSON.parse(content);
-    }
-  } catch (err) {
-    console.warn("Failed reading disk cache:", err);
+    return out;
+  } catch {
+    return {};
   }
-  return {};
 }
 
 function writeDiskCache(key: string, entry: CacheEntry<unknown>) {
@@ -58,7 +90,15 @@ function writeDiskCache(key: string, entry: CacheEntry<unknown>) {
     ensureCacheDir();
     const current = readDiskCache();
     current[key] = entry;
-    fs.writeFileSync(CACHE_FILE, JSON.stringify(current, null, 2), "utf8");
+    // Prune entries older than grace window to bound file growth
+    const cutoff = Date.now() - DEFAULT_GRACE_MS * 2;
+    for (const [k, v] of Object.entries(current)) {
+      if (!isValidEntry(v) || v.timestamp < cutoff) delete current[k];
+    }
+    // Atomic write: tmp + rename (avoids torn JSON on crash)
+    const tmp = `${CACHE_FILE}.${process.pid}.tmp`;
+    fs.writeFileSync(tmp, JSON.stringify(current), "utf8");
+    fs.renameSync(tmp, CACHE_FILE);
   } catch (err) {
     console.warn("Failed writing disk cache:", err);
   }
@@ -75,6 +115,9 @@ export async function getOrSetCache<T>(
   fetcher: () => Promise<T>,
   options: CacheOptions = {}
 ): Promise<{ data: T; source: "memory" | "disk" | "network"; isStale: boolean }> {
+  if (typeof key !== "string" || key.length === 0 || key.length > 200) {
+    throw new Error("Invalid cache key");
+  }
   const ttlMs = options.ttlMs ?? DEFAULT_TTL_MS;
   const graceMs = options.graceMs ?? DEFAULT_GRACE_MS;
   const force = options.forceRefresh ?? false;
@@ -95,7 +138,7 @@ export async function getOrSetCache<T>(
         try {
           const fresh = await fetcher();
           const newEntry: CacheEntry<T> = { data: fresh, timestamp: Date.now(), key };
-          memoryStore.set(key, newEntry);
+          setMemory(key, newEntry);
           writeDiskCache(key, newEntry);
         } catch (e) {
           console.warn(`Background revalidation failed for ${key}:`, e);
@@ -114,7 +157,7 @@ export async function getOrSetCache<T>(
     if (diskEntry) {
       const age = now - diskEntry.timestamp;
       // Populate memory store
-      memoryStore.set(key, diskEntry);
+      setMemory(key, diskEntry);
 
       if (age <= ttlMs) {
         return { data: diskEntry.data, source: "disk", isStale: false };
@@ -126,7 +169,7 @@ export async function getOrSetCache<T>(
           try {
             const fresh = await fetcher();
             const newEntry: CacheEntry<T> = { data: fresh, timestamp: Date.now(), key };
-            memoryStore.set(key, newEntry);
+            setMemory(key, newEntry);
             writeDiskCache(key, newEntry);
           } catch (e) {
             console.warn(`Background revalidation failed for ${key}:`, e);
@@ -142,7 +185,7 @@ export async function getOrSetCache<T>(
   try {
     const freshData = await fetcher();
     const newEntry: CacheEntry<T> = { data: freshData, timestamp: Date.now(), key };
-    memoryStore.set(key, newEntry);
+    setMemory(key, newEntry);
     writeDiskCache(key, newEntry);
 
     return { data: freshData, source: "network", isStale: false };
