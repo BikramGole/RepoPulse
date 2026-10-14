@@ -3,6 +3,7 @@ import Link from "next/link";
 import { connection } from "next/server";
 import { fetchGitHubFollowingStats } from "@/lib/github";
 import { LeaderboardTable } from "@/components/LeaderboardTable";
+import { ErrorBoundary } from "@/components/ErrorBoundary";
 import { GithubIcon } from "@/components/Icons";
 import {
   Users,
@@ -95,7 +96,9 @@ async function LeaderboardContainer() {
         </div>
 
         {/* Dynamic Interactive Leaderboard */}
-        <LeaderboardTable initialUsers={users} />
+        <ErrorBoundary>
+          <LeaderboardTable initialUsers={users} />
+        </ErrorBoundary>
       </div>
     );
   } catch (err: unknown) {
@@ -111,7 +114,7 @@ async function LeaderboardContainer() {
 
 export default function HomePage() {
   return (
-    <main className="min-h-screen bg-[#080c14] text-neutral-200 p-6 md:p-14 selection:bg-blue-500/30">
+    <main id="main-content" className="min-h-screen bg-[#080c14] text-neutral-200 p-6 md:p-14 selection:bg-blue-500/30">
       <div className="max-w-7xl mx-auto space-y-10">
         {/* Top Header Bar */}
         <header className="flex flex-col md:flex-row md:items-center justify-between gap-6 pb-8 border-b border-white/[0.08]">
