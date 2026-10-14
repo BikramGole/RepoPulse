@@ -1,5 +1,6 @@
 import { NextRequest, NextResponse } from "next/server";
 import { fetchRepoInsights } from "@/lib/repoTracker";
+import { isValidGitHubLogin, isValidRepoName } from "@/lib/validation";
 
 export async function GET(
   request: NextRequest,
@@ -7,9 +8,9 @@ export async function GET(
 ) {
   const { owner, repo } = await context.params;
 
-  if (!owner || !repo) {
+  if (!owner || !repo || !isValidGitHubLogin(owner) || !isValidRepoName(repo.replace(/\.git$/, ""))) {
     return NextResponse.json(
-      { error: "Owner and repository name are required" },
+      { error: { code: "INVALID_SLUG", message: "Owner and repository name are invalid." } },
       { status: 400 }
     );
   }
@@ -19,17 +20,28 @@ export async function GET(
 
   try {
     const data = await fetchRepoInsights(owner, repo, { forceRefresh });
-    return NextResponse.json(data, {
+    return NextResponse.json({ data, meta: { owner, repo } }, {
       status: 200,
       headers: {
         "Cache-Control": "public, s-maxage=300, stale-while-revalidate=600",
       },
     });
-  } catch (error: any) {
+  } catch (error: unknown) {
     console.error(`Error fetching insights for ${owner}/${repo}:`, error);
-    const status = error.message?.includes("not found") ? 404 : 500;
+    const message = error instanceof Error ? error.message : "";
+    if (message.includes("Invalid repository") || message.includes("Invalid GitHub")) {
+      return NextResponse.json(
+        { error: { code: "INVALID_SLUG", message: "Owner and repository name are invalid." } },
+        { status: 400 }
+      );
+    }
+    const status = message.includes("not found") ? 404 : 502;
+    const publicMessage =
+      status === 404
+        ? `Repository "${owner}/${repo}" was not found.`
+        : "Repository insights are temporarily unavailable.";
     return NextResponse.json(
-      { error: error.message || "Failed to fetch repository insights" },
+      { error: { code: status === 404 ? "NOT_FOUND" : "UPSTREAM_ERROR", message: publicMessage } },
       { status }
     );
   }
