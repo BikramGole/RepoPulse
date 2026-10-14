@@ -1,4 +1,5 @@
 import { getOrSetCache } from "./cache";
+import { assertValidRepoSlug, sanitizeSearchQuery } from "@/lib/validation";
 import {
   RepoInsightData,
   RepoOverview,
@@ -27,6 +28,18 @@ function getAuthHeaders(token?: string): Record<string, string> {
     headers.Authorization = `Bearer ${authToken}`;
   }
   return headers;
+}
+
+const FETCH_TIMEOUT_MS = 12_000;
+
+async function githubFetch(url: string, headers: Record<string, string>, revalidate: number) {
+  const ctrl = new AbortController();
+  const timer = setTimeout(() => ctrl.abort(), FETCH_TIMEOUT_MS);
+  try {
+    return await fetch(url, { headers, next: { revalidate }, signal: ctrl.signal });
+  } finally {
+    clearTimeout(timer);
+  }
 }
 
 /**
@@ -59,10 +72,11 @@ async function fetchRepoInsightsFromGitHub(
   const headers = getAuthHeaders(token);
 
   // 1. Fetch Repository Overview
-  const repoRes = await fetch(`${GITHUB_API_BASE}/repos/${cleanOwner}/${cleanRepo}`, {
+  const repoRes = await githubFetch(
+    `${GITHUB_API_BASE}/repos/${encodeURIComponent(cleanOwner)}/${encodeURIComponent(cleanRepo)}`,
     headers,
-    next: { revalidate: 600 },
-  });
+    600
+  );
 
   if (!repoRes.ok) {
     if (repoRes.status === 404) {
@@ -100,9 +114,10 @@ async function fetchRepoInsightsFromGitHub(
   // 2. Fetch Contributors
   let rawContributors: any[] = [];
   try {
-    const contribRes = await fetch(
-      `${GITHUB_API_BASE}/repos/${cleanOwner}/${cleanRepo}/contributors?per_page=100`,
-      { headers, next: { revalidate: 600 } }
+    const contribRes = await githubFetch(
+      `${GITHUB_API_BASE}/repos/${encodeURIComponent(cleanOwner)}/${encodeURIComponent(cleanRepo)}/contributors?per_page=100`,
+      headers,
+      600
     );
     if (contribRes.ok) {
       rawContributors = await contribRes.json();
@@ -129,9 +144,10 @@ async function fetchRepoInsightsFromGitHub(
   // 3. Fetch Pull Requests (last 100)
   let rawPRs: any[] = [];
   try {
-    const prRes = await fetch(
-      `${GITHUB_API_BASE}/repos/${cleanOwner}/${cleanRepo}/pulls?state=all&per_page=100&sort=created&direction=desc`,
-      { headers, next: { revalidate: 300 } }
+    const prRes = await githubFetch(
+      `${GITHUB_API_BASE}/repos/${encodeURIComponent(cleanOwner)}/${encodeURIComponent(cleanRepo)}/pulls?state=all&per_page=100&sort=created&direction=desc`,
+      headers,
+      300
     );
     if (prRes.ok) {
       rawPRs = await prRes.json();
@@ -205,9 +221,10 @@ async function fetchRepoInsightsFromGitHub(
   // 4. Fetch Issues (last 100)
   let rawIssues: any[] = [];
   try {
-    const issuesRes = await fetch(
-      `${GITHUB_API_BASE}/repos/${cleanOwner}/${cleanRepo}/issues?state=all&per_page=100&sort=created&direction=desc`,
-      { headers, next: { revalidate: 300 } }
+    const issuesRes = await githubFetch(
+      `${GITHUB_API_BASE}/repos/${encodeURIComponent(cleanOwner)}/${encodeURIComponent(cleanRepo)}/issues?state=all&per_page=100&sort=created&direction=desc`,
+      headers,
+      300
     );
     if (issuesRes.ok) {
       rawIssues = await issuesRes.json();
@@ -375,7 +392,8 @@ export async function fetchRepoInsights(
   options: FetchOptions = {}
 ): Promise<RepoInsightData> {
   const cleanOwner = owner.trim();
-  const cleanRepo = repo.trim();
+  const cleanRepo = repo.trim().replace(/\.git$/, "");
+  assertValidRepoSlug(cleanOwner, cleanRepo);
   const cacheKey = `repo_insights_${cleanOwner.toLowerCase()}_${cleanRepo.toLowerCase()}`;
 
   const cached = await getOrSetCache(
@@ -395,43 +413,49 @@ export async function fetchRepoInsights(
  * Searches repositories on GitHub
  */
 export async function searchRepositories(query: string, token?: string): Promise<RepoOverview[]> {
-  const cleanQ = query.trim();
+  const cleanQ = sanitizeSearchQuery(query, 100);
   if (!cleanQ) return [];
 
   const headers = getAuthHeaders(token);
-  const res = await fetch(
-    `${GITHUB_API_BASE}/search/repositories?q=${encodeURIComponent(cleanQ)}&per_page=8`,
-    { headers, next: { revalidate: 300 } }
-  );
+  const ctrl = new AbortController();
+  const timer = setTimeout(() => ctrl.abort(), FETCH_TIMEOUT_MS);
+  try {
+    const res = await fetch(
+      `${GITHUB_API_BASE}/search/repositories?q=${encodeURIComponent(cleanQ)}&per_page=8`,
+      { headers, next: { revalidate: 300 }, signal: ctrl.signal }
+    );
 
-  if (!res.ok) {
-    return [];
+    if (!res.ok) {
+      return [];
+    }
+
+    const data: any = await res.json();
+    const items = Array.isArray(data.items) ? data.items : [];
+
+    return items.map((r: any) => ({
+      name: r.name,
+      fullName: r.full_name,
+      owner: {
+        login: r.owner?.login || "",
+        avatarUrl: r.owner?.avatar_url || "",
+        htmlUrl: r.owner?.html_url || "",
+      },
+      description: r.description || null,
+      htmlUrl: r.html_url,
+      stars: r.stargazers_count || 0,
+      forks: r.forks_count || 0,
+      openIssuesCount: r.open_issues_count || 0,
+      watchers: r.watchers_count || 0,
+      language: r.language || null,
+      topics: Array.isArray(r.topics) ? r.topics : [],
+      license: r.license?.spdx_id || r.license?.name || null,
+      defaultBranch: r.default_branch || "main",
+      createdAt: r.created_at,
+      updatedAt: r.updated_at,
+      pushedAt: r.pushed_at,
+      homepage: r.homepage || null,
+    }));
+  } finally {
+    clearTimeout(timer);
   }
-
-  const data: any = await res.json();
-  const items = Array.isArray(data.items) ? data.items : [];
-
-  return items.map((r: any) => ({
-    name: r.name,
-    fullName: r.full_name,
-    owner: {
-      login: r.owner?.login || "",
-      avatarUrl: r.owner?.avatar_url || "",
-      htmlUrl: r.owner?.html_url || "",
-    },
-    description: r.description || null,
-    htmlUrl: r.html_url,
-    stars: r.stargazers_count || 0,
-    forks: r.forks_count || 0,
-    openIssuesCount: r.open_issues_count || 0,
-    watchers: r.watchers_count || 0,
-    language: r.language || null,
-    topics: Array.isArray(r.topics) ? r.topics : [],
-    license: r.license?.spdx_id || r.license?.name || null,
-    defaultBranch: r.default_branch || "main",
-    createdAt: r.created_at,
-    updatedAt: r.updated_at,
-    pushedAt: r.pushed_at,
-    homepage: r.homepage || null,
-  }));
 }
