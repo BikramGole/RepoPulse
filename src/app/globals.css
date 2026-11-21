@@ -87,6 +87,12 @@
   contain-intrinsic-size: auto 64px;
 }
 
+/* feed-card-deferred: defer rendering for offscreen feed cards (modern-web-guidance) */
+.feed-card-deferred {
+  content-visibility: auto;
+  contain-intrinsic-size: auto none auto 96px;
+}
+
 @media (prefers-reduced-motion: reduce) {
   *,
   *::before,
