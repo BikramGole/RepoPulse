@@ -229,22 +229,80 @@ export async function fetchGitHubFeed(
         throw new Error("No GITHUB_TOKEN configured. Please set GITHUB_TOKEN in .env.local.");
       }
 
-      // Fetch both endpoints in parallel
-      const [receivedRaw, userRaw] = await Promise.all([
-        restFetch(`/users/${username}/received_events?per_page=50`, authToken),
-        restFetch(`/users/${username}/events?per_page=30`, authToken),
+      // Fetch multi-page received_events and active network collaborator feeds concurrently
+      const activeCollaborators = ["BikramGole", "Sagar-Shahi", "kinahubofficial", "jeevannar16-web", "Shaswatop"];
+
+      const [
+        receivedPage1,
+        receivedPage2,
+        userRaw,
+        ...collabResults
+      ] = await Promise.allSettled([
+        restFetch(`/users/${username}/received_events?per_page=100&page=1`, authToken),
+        restFetch(`/users/${username}/received_events?per_page=100&page=2`, authToken),
+        restFetch(`/users/${username}/events?per_page=100`, authToken),
+        ...activeCollaborators.map((c) =>
+          restFetch(`/users/${c}/events?per_page=50`, authToken)
+        ),
       ]);
 
-      const receivedEvents = Array.isArray(receivedRaw)
-        ? receivedRaw.map(parseEvent)
-        : [];
-      const userEvents = Array.isArray(userRaw)
-        ? userRaw.map(parseEvent)
-        : [];
+      const allNetworkRaw: unknown[] = [];
+      if (receivedPage1.status === "fulfilled" && Array.isArray(receivedPage1.value)) {
+        allNetworkRaw.push(...receivedPage1.value);
+      }
+      if (receivedPage2.status === "fulfilled" && Array.isArray(receivedPage2.value)) {
+        allNetworkRaw.push(...receivedPage2.value);
+      }
+      for (const res of collabResults) {
+        if (res.status === "fulfilled" && Array.isArray(res.value)) {
+          allNetworkRaw.push(...res.value);
+        }
+      }
+
+      // Deduplicate network events by unique GitHub event ID
+      const seenNetworkIds = new Set<string>();
+      const parsedNetworkEvents: FeedEvent[] = [];
+      for (const raw of allNetworkRaw) {
+        if (!raw || typeof raw !== "object") continue;
+        const id = (raw as { id?: string }).id;
+        if (id && !seenNetworkIds.has(id)) {
+          seenNetworkIds.add(id);
+          parsedNetworkEvents.push(parseEvent(raw));
+        }
+      }
+      // Sort newest first
+      parsedNetworkEvents.sort(
+        (a, b) => new Date(b.createdAt).getTime() - new Date(a.createdAt).getTime()
+      );
+
+      // User events: username activity + BikramGole personal activity
+      const allUserRaw: unknown[] = [];
+      if (userRaw.status === "fulfilled" && Array.isArray(userRaw.value)) {
+        allUserRaw.push(...userRaw.value);
+      }
+      // Also include BikramGole events in user activity tab
+      const bikramCollab = collabResults[0];
+      if (bikramCollab && bikramCollab.status === "fulfilled" && Array.isArray(bikramCollab.value)) {
+        allUserRaw.push(...bikramCollab.value);
+      }
+
+      const seenUserIds = new Set<string>();
+      const parsedUserEvents: FeedEvent[] = [];
+      for (const raw of allUserRaw) {
+        if (!raw || typeof raw !== "object") continue;
+        const id = (raw as { id?: string }).id;
+        if (id && !seenUserIds.has(id)) {
+          seenUserIds.add(id);
+          parsedUserEvents.push(parseEvent(raw));
+        }
+      }
+      parsedUserEvents.sort(
+        (a, b) => new Date(b.createdAt).getTime() - new Date(a.createdAt).getTime()
+      );
 
       return {
-        networkEvents: deduplicateEvents(receivedEvents),
-        userEvents: deduplicateEvents(userEvents),
+        networkEvents: deduplicateEvents(parsedNetworkEvents),
+        userEvents: deduplicateEvents(parsedUserEvents),
         fetchedAt: new Date().toISOString(),
         username,
       };
