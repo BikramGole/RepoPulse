@@ -13,6 +13,7 @@ import {
   Sparkles,
   Zap,
   BarChart3,
+  Rss,
 } from "lucide-react";
 
 async function LeaderboardContainer() {
@@ -150,6 +151,14 @@ export default function HomePage() {
           </div>
 
           <div className="flex items-center gap-3">
+            <Link
+              href="/feed"
+              className="flex items-center gap-2 px-4 py-2.5 bg-gradient-to-r from-orange-600/30 to-rose-600/30 hover:from-orange-600/50 hover:to-rose-600/50 border border-orange-500/30 text-orange-300 hover:text-white rounded-2xl text-xs font-semibold transition-all shadow-sm"
+            >
+              <Rss className="w-4 h-4 text-orange-400" />
+              Feed
+            </Link>
+
             <Link
               href="/repos/BikramGole/KinaHub"
               className="flex items-center gap-2 px-4 py-2.5 bg-gradient-to-r from-blue-600/30 to-cyan-600/30 hover:from-blue-600/50 hover:to-cyan-600/50 border border-cyan-500/30 text-cyan-300 hover:text-white rounded-2xl text-xs font-semibold transition-all shadow-sm"
