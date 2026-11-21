@@ -59,9 +59,12 @@ function mapEventType(raw: string): FeedEventType {
 function buildSummary(type: FeedEventType, actor: string, repoName: string, payload: any): string {
   switch (type) {
     case "push": {
-      const count = payload?.commits?.length ?? payload?.size ?? 0;
+      const count = payload?.commits?.length ?? payload?.size ?? (payload?.head ? 1 : 0);
       const branch = (payload?.ref ?? "").replace("refs/heads/", "");
-      return `pushed ${count} commit${count !== 1 ? "s" : ""} to ${branch || "main"} in ${repoName}`;
+      const branchName = branch || "main";
+      return count > 0
+        ? `pushed ${count} commit${count !== 1 ? "s" : ""} to ${branchName} in ${repoName}`
+        : `pushed to ${branchName} in ${repoName}`;
     }
     case "star":
       return `starred ${repoName}`;
@@ -108,7 +111,7 @@ function parseEvent(raw: any): FeedEvent {
 
   if (type === "push") {
     meta.branch = (payload.ref ?? "").replace("refs/heads/", "");
-    meta.commitCount = payload.commits?.length ?? payload.size ?? 0;
+    meta.commitCount = payload.commits?.length ?? payload.size ?? (payload.head ? 1 : 0);
     meta.commitMessages = (payload.commits ?? [])
       .slice(0, 3)
       .map((c: any) => c.message?.split("\n")[0] ?? "");
@@ -175,13 +178,17 @@ function deduplicateEvents(events: FeedEvent[]): FeedEvent[] {
       ].slice(0, 5);
       const branch = prev.meta?.branch || "main";
 
+      const pushSummary = totalCount > 0
+        ? `pushed ${totalCount} commit${totalCount !== 1 ? "s" : ""} to ${branch} in ${prev.repo?.name ?? ""}`
+        : `pushed to ${branch} in ${prev.repo?.name ?? ""}`;
+
       const merged: FeedEvent = {
         id: prev.id,
         type: prev.type,
         actor: prev.actor,
         repo: prev.repo,
         createdAt: prev.createdAt,
-        summary: `pushed ${totalCount} commit${totalCount !== 1 ? "s" : ""} to ${branch} in ${prev.repo?.name ?? ""}`,
+        summary: pushSummary,
         meta: {
           branch,
           commitCount: totalCount,
